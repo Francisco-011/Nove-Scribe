@@ -1,0 +1,5 @@
+{
+  "name": "Nova Scribe",
+  "description": "Un entorno de desarrollo integrado (IDE) para escritores de novelas, que aprovecha la IA para ayudar con la escritura, la construcción de mundos y la creación de recursos visuales con una memoria contextual persistente.",
+  "requestFramePermissions": []
+}
