@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Project } from '../types';
 import { generateProjectIdea } from '../services/geminiService';
-import { PlusIcon, Spinner, TrashIcon, LightbulbIcon } from './Icons';
+import { exportProject, importProject } from '../utils/projectImportExport';
+import { PlusIcon, Spinner, TrashIcon, LightbulbIcon, UploadIcon, ExportIcon } from './Icons';
 
 interface ProjectDashboardProps {
     projects: Project[];
@@ -119,6 +120,9 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ projects, on
     const [ideaPrompt, setIdeaPrompt] = useState('');
     const [initialData, setInitialData] = useState<Partial<Omit<Project, 'id'>> | undefined>();
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const importInputRef = useRef<HTMLInputElement>(null);
+    const [exportingId, setExportingId] = useState<string | null>(null);
 
     const handleGenerateIdea = async () => {
         if (!ideaPrompt) return;
@@ -139,8 +143,51 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ projects, on
         setIsModalOpen(true);
     };
 
+    const handleExport = async (project: Project) => {
+        setExportingId(project.id);
+        try {
+            await exportProject(project);
+        } catch(e) {
+            // Error is alerted inside the export function
+        } finally {
+            setExportingId(null);
+        }
+    }
+
+    const handleImportClick = () => {
+        importInputRef.current?.click();
+    };
+
+    const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        try {
+            const projectData = await importProject(file);
+            onCreateProject(projectData);
+            alert(`Proyecto "${projectData.title}" importado con éxito.`);
+        } catch (error: any) {
+            console.error("Error importing project:", error);
+            alert(`Hubo un error al importar el proyecto: ${error.message}`);
+        } finally {
+            setIsImporting(false);
+            if(importInputRef.current) {
+                importInputRef.current.value = '';
+            }
+        }
+    };
+
+
     return (
         <>
+            <input 
+                type="file" 
+                ref={importInputRef} 
+                onChange={handleFileImport} 
+                accept=".zip" 
+                style={{ display: 'none' }}
+            />
             <NewProjectModal 
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
@@ -188,10 +235,16 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ projects, on
 
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-3xl font-bold">Mis Proyectos</h2>
-                        <button onClick={openNewProjectModal} className="flex items-center space-x-2 px-4 py-2 text-sm bg-brand-accent text-white rounded-lg hover:bg-sky-500 transition-colors">
-                            <PlusIcon className="h-5 w-5"/>
-                            <span>Nuevo Proyecto</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                            <button onClick={handleImportClick} disabled={isImporting} className="flex items-center space-x-2 px-4 py-2 text-sm bg-brand-secondary text-white rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50">
+                                {isImporting ? <Spinner className="h-5 w-5"/> : <UploadIcon className="h-5 w-5"/>}
+                                <span>{isImporting ? 'Importando...' : 'Importar'}</span>
+                            </button>
+                            <button onClick={openNewProjectModal} className="flex items-center space-x-2 px-4 py-2 text-sm bg-brand-accent text-white rounded-lg hover:bg-sky-500 transition-colors">
+                                <PlusIcon className="h-5 w-5"/>
+                                <span>Nuevo Proyecto</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -203,9 +256,14 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ projects, on
                                 </div>
                                 <div className="flex items-center justify-between mt-4">
                                     <button onClick={() => onSelectProject(project.id)} className="w-full text-center py-2 px-4 bg-slate-600 rounded-md hover:bg-brand-accent transition-colors">Abrir</button>
-                                     <button onClick={(e) => { e.stopPropagation(); setProjectToDelete(project); }} className="ml-2 p-2 text-slate-400 hover:text-red-500 hover:bg-slate-700 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <TrashIcon className="h-5 w-5"/>
-                                    </button>
+                                    <div className="flex items-center ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => handleExport(project)} className="p-2 text-slate-400 hover:text-sky-400 hover:bg-slate-700 rounded-full" title="Exportar Proyecto">
+                                            {exportingId === project.id ? <Spinner className="h-5 w-5" /> : <ExportIcon className="h-5 w-5"/>}
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); setProjectToDelete(project); }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-slate-700 rounded-full" title="Eliminar Proyecto">
+                                            <TrashIcon className="h-5 w-5"/>
+                                        </button>
+                                     </div>
                                 </div>
                             </div>
                         ))}

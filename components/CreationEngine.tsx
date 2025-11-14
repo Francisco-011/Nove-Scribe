@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Project, PlotPoint, Character, Location } from '../types';
 import { generateNarrative, analyzeManuscriptForPlotPoints, analyzeManuscriptForEntities } from '../services/geminiService';
-import { Spinner, PlusIcon, LightbulbIcon, XIcon } from './Icons';
+import { Spinner, PlusIcon, LightbulbIcon, XIcon, ExportIcon } from './Icons';
 
 interface CreationEngineProps {
   project: Project;
@@ -48,6 +48,46 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
         }));
     }
   };
+  
+  const handleExportManuscript = () => {
+    if (!activeManuscript) return;
+
+    let exportContent = activeManuscript.content;
+    
+    // Build image references appendix
+    const imageReferences: string[] = [];
+    project.memoryCore.characters.forEach(c => {
+        if (c.imageUrl) imageReferences.push(`- [IMAGEN: Personaje] ${c.name}`);
+    });
+    project.memoryCore.locations.forEach(l => {
+        if (l.imageUrl) imageReferences.push(`- [IMAGEN: Ubicación] ${l.name}`);
+    });
+    project.memoryCore.plotPoints.forEach(p => {
+        if (p.imageUrl) imageReferences.push(`- [IMAGEN: Punto de Trama] ${p.title}`);
+    });
+
+    if (imageReferences.length > 0) {
+        exportContent += `\n\n\n---\n\n## REFERENCIAS DE IMÁGENES\n\n`;
+        exportContent += `Esta sección es una guía para la maquetación. Indica qué elementos del Núcleo de Memoria tienen una imagen asignada.\n\n`;
+        exportContent += imageReferences.join('\n');
+    }
+
+    const sanitizeFilename = (name: string) => name.replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
+    
+    const fileName = `${sanitizeFilename(project.title)}_${sanitizeFilename(activeManuscript.title)}.md`;
+    const blob = new Blob([exportContent], { type: 'text/markdown;charset=utf-8' });
+    
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    
+    // Clean up
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
 
   const handleGenerate = async () => {
     if (!prompt) return;
@@ -164,7 +204,8 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
                         <option key={m.id} value={m.id}>{m.title}</option>
                     ))}
                 </select>
-                <button onClick={handleNewManuscript} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600"><PlusIcon className="h-5 w-5"/></button>
+                <button onClick={handleNewManuscript} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600" title="Nuevo Manuscrito"><PlusIcon className="h-5 w-5"/></button>
+                <button onClick={handleExportManuscript} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600" title="Exportar Manuscrito"><ExportIcon className="h-5 w-5"/></button>
             </div>
           </div>
           <textarea

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import type { Project, Character, Location, PlotPoint } from '../types';
 import { generateCharacterImage, generateLocationImage, generatePlotPointImage, generateSceneImage, suggestScenesFromManuscript } from '../services/geminiService';
-import { Spinner, SparklesIcon, UploadIcon, TrashIcon } from './Icons';
+import { Spinner, SparklesIcon, UploadIcon, TrashIcon, DownloadIcon } from './Icons';
 
 interface VisualStudioProps {
   project: Project;
@@ -119,6 +119,17 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
 
   const handleDeleteImage = (id: string) => {
     setGeneratedImages(prev => prev.filter(image => image.id !== id));
+  };
+  
+  const handleDownloadImage = (image: GeneratedImage) => {
+    const sanitizeFilename = (name: string) => name.replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
+    const fileName = `${sanitizeFilename(project.title)}_${image.id.substring(0, 8)}.png`;
+    const link = document.createElement('a');
+    link.href = image.src;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
   
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -240,9 +251,14 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                         {generatedImages.map((image) => (
                             <div key={image.id} className="bg-brand-secondary p-2 rounded-lg space-y-2 group relative">
                                 <img src={image.src} alt={`Generated art ${image.id}`} className="rounded-lg w-full h-auto object-cover" />
-                                <button onClick={() => handleDeleteImage(image.id)} className="absolute top-3 right-3 p-1.5 bg-black bg-opacity-50 rounded-full text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all" title="Eliminar imagen">
-                                    <TrashIcon className="h-4 w-4" />
-                                </button>
+                                <div className="absolute top-3 right-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => handleDownloadImage(image)} className="p-1.5 bg-black bg-opacity-50 rounded-full text-white hover:bg-sky-600 transition-colors" title="Descargar imagen">
+                                        <DownloadIcon className="h-4 w-4" />
+                                    </button>
+                                    <button onClick={() => handleDeleteImage(image.id)} className="p-1.5 bg-black bg-opacity-50 rounded-full text-white hover:bg-red-600 transition-colors" title="Eliminar imagen">
+                                        <TrashIcon className="h-4 w-4" />
+                                    </button>
+                                </div>
                                 <select defaultValue="none" onChange={(e) => handleAssignImage(image.src, e.target.value)} className="w-full bg-slate-700 rounded-md p-2 text-sm focus:ring-1 focus:ring-brand-accent focus:outline-none">
                                     <option value="none" disabled>Asignar a...</option>
                                     <optgroup label="Personajes">{project.memoryCore.characters.map(c => <option key={c.id} value={`character-${c.id}`}>{c.name}</option>)}</optgroup>
