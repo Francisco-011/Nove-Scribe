@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Project } from '../types';
+import type { Project, Character, PlotPoint } from '../types';
 import { generateProjectIdea } from '../services/geminiService';
 import { exportProject, importProject } from '../utils/projectImportExport';
 import { PlusIcon, Spinner, TrashIcon, LightbulbIcon, UploadIcon, ExportIcon } from './Icons';
@@ -11,12 +11,21 @@ interface ProjectDashboardProps {
     onDeleteProject: (id: string) => void;
 }
 
-const NewProjectModal: React.FC<{
+interface NewProjectModalProps {
     isOpen: boolean;
     onClose: () => void;
     onCreate: (projectData: Omit<Project, 'id'>) => void;
-    initialData?: Partial<Omit<Project, 'id'>>;
-}> = ({ isOpen, onClose, onCreate, initialData }) => {
+    initialData?: {
+        title?: string;
+        synopsis?: string;
+        styleSeed?: string;
+        characters?: Partial<Character>[];
+        plotPoints?: Partial<PlotPoint>[];
+    };
+}
+
+
+const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClose, onCreate, initialData }) => {
     const [title, setTitle] = useState('');
     const [synopsis, setSynopsis] = useState('');
     const [styleSeed, setStyleSeed] = useState('');
@@ -34,13 +43,35 @@ const NewProjectModal: React.FC<{
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const initialManuscriptId = crypto.randomUUID();
+        
+        const finalCharacters: Character[] = initialData?.characters?.map((c): Character => ({
+            id: crypto.randomUUID(),
+            name: c.name || 'Sin Nombre',
+            age: c.age || '',
+            role: c.role || '',
+            psychology: c.psychology || '',
+            backstory: '',
+            relationships: '',
+        })) || [];
+
+        const finalPlotPoints: PlotPoint[] = initialData?.plotPoints?.map((p): PlotPoint => ({
+            id: crypto.randomUUID(),
+            title: p.title || 'Sin Título',
+            description: p.description || '',
+        })) || [];
+
         onCreate({
             title,
             synopsis,
             styleSeed,
-            memoryCore: { characters: [], locations: [], plotPoints: [] },
+            memoryCore: { 
+                characters: finalCharacters,
+                locations: [],
+                plotPoints: finalPlotPoints,
+            },
             manuscripts: [{ id: initialManuscriptId, title: 'Capítulo 1 - Borrador', content: '' }],
             activeManuscriptId: initialManuscriptId,
+            gallery: [],
         });
         onClose();
     };
@@ -118,7 +149,7 @@ export const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ projects, on
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isAILoading, setIsAILoading] = useState(false);
     const [ideaPrompt, setIdeaPrompt] = useState('');
-    const [initialData, setInitialData] = useState<Partial<Omit<Project, 'id'>> | undefined>();
+    const [initialData, setInitialData] = useState<NewProjectModalProps['initialData']>();
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement>(null);

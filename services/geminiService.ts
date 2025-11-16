@@ -221,12 +221,12 @@ export const analyzeManuscriptForPlotPoints = async (project: Project): Promise<
 
 export const analyzeManuscriptForEntities = async (
   project: Project
-): Promise<{ characters: Partial<Character>[], locations: Partial<Location>[] }> => {
+): Promise<{ characters: { name: string; justification: string }[], locations: { name: string; justification: string }[] }> => {
     const context = buildAnalysisContext(project);
     try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `${context}\n\nAnaliza el manuscrito en el contexto proporcionado. Identifica nombres de posibles NUEVOS personajes y NUEVAS ubicaciones que NO estén en las listas de existentes. Prioriza aquellos que parecen tener un rol o importancia en la narrativa (ej: tienen diálogo, realizan acciones clave). Para cada uno, extrae solo el nombre.\n\nResponde únicamente con un objeto JSON que tenga dos arrays: "characters" y "locations". Cada objeto en los arrays debe tener solo una propiedad "name".`,
+            contents: `${context}\n\nAnaliza el manuscrito en el contexto proporcionado. Identifica nombres de posibles NUEVOS personajes y NUEVAS ubicaciones que NO estén en las listas de existentes. Prioriza aquellos que parecen tener un rol o importancia en la narrativa (ej: tienen diálogo, realizan acciones clave). Para cada uno, extrae su nombre y proporciona una breve 'justification' (justificación) en español de por qué es relevante (ej: 'Tuvo un diálogo clave con el protagonista', 'Es el lugar de la batalla principal').\n\nResponde únicamente con un objeto JSON que tenga dos arrays: "characters" y "locations".`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -236,14 +236,22 @@ export const analyzeManuscriptForEntities = async (
                             type: Type.ARRAY,
                             items: {
                                 type: Type.OBJECT,
-                                properties: { name: { type: Type.STRING } },
+                                properties: { 
+                                    name: { type: Type.STRING },
+                                    justification: { type: Type.STRING, description: "Breve explicación de por qué el personaje es relevante."}
+                                },
+                                required: ["name", "justification"]
                             },
                         },
                         locations: {
                             type: Type.ARRAY,
                             items: {
                                 type: Type.OBJECT,
-                                properties: { name: { type: Type.STRING } },
+                                properties: { 
+                                    name: { type: Type.STRING },
+                                    justification: { type: Type.STRING, description: "Breve explicación de por qué la ubicación es relevante."}
+                                },
+                                required: ["name", "justification"]
                             },
                         },
                     },
@@ -447,15 +455,21 @@ export const suggestScenesFromManuscript = async (project: Project): Promise<{ti
     }
 }
 
-export const generateProjectIdea = async (prompt: string): Promise<{ title: string; synopsis: string; styleSeed: string; }> => {
+export const generateProjectIdea = async (prompt: string): Promise<{ title: string; synopsis: string; styleSeed: string; characters: Partial<Character>[]; plotPoints: Partial<PlotPoint>[]; }> => {
     try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
             contents: `Eres un asistente creativo para escritores de novelas. Basado en la siguiente idea inicial, genera un concepto de proyecto completo y atractivo en español.
 Idea inicial: "${prompt}"
 
-Genera un título evocador, una sinopsis de 2 a 3 párrafos que establezca el conflicto principal y los personajes clave, y una "Semilla de Estilo Visual" descriptiva para la generación de imágenes. Todos los valores deben estar en español.
-Responde únicamente con un objeto JSON con las claves "title", "synopsis" y "styleSeed".`,
+Genera:
+1. Un 'title' evocador.
+2. Una 'synopsis' de 2 a 3 párrafos.
+3. Una 'styleSeed' descriptiva para la generación de imágenes.
+4. Un array 'characters' con 2-3 perfiles de personajes clave. Cada personaje debe tener 'name', 'age', 'role', y 'psychology'.
+5. Un array 'plotPoints' con 3-5 puntos clave iniciales de la trama. Cada punto debe tener 'title' y 'description'.
+
+Todos los valores deben estar en español. Responde únicamente con un objeto JSON.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -464,8 +478,32 @@ Responde únicamente con un objeto JSON con las claves "title", "synopsis" y "st
                         title: { type: Type.STRING },
                         synopsis: { type: Type.STRING },
                         styleSeed: { type: Type.STRING },
+                        characters: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    name: { type: Type.STRING },
+                                    age: { type: Type.STRING },
+                                    role: { type: Type.STRING },
+                                    psychology: { type: Type.STRING },
+                                },
+                                required: ["name", "age", "role", "psychology"],
+                            }
+                        },
+                        plotPoints: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    title: { type: Type.STRING },
+                                    description: { type: Type.STRING },
+                                },
+                                required: ["title", "description"],
+                            }
+                        }
                     },
-                    required: ["title", "synopsis", "styleSeed"],
+                    required: ["title", "synopsis", "styleSeed", "characters", "plotPoints"],
                 },
             },
         });

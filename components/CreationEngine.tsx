@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import type { Project, PlotPoint, Character, Location } from '../types';
 import { generateNarrative, analyzeManuscriptForPlotPoints, analyzeManuscriptForEntities } from '../services/geminiService';
-import { Spinner, PlusIcon, LightbulbIcon, XIcon, ExportIcon } from './Icons';
+import { Spinner, PlusIcon, LightbulbIcon, XIcon, ExportIcon, EditIcon, TrashIcon } from './Icons';
 
 interface CreationEngineProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
+}
+
+interface EntitySuggestion {
+    name: string;
+    justification: string;
 }
 
 export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProject }) => {
@@ -14,8 +19,8 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
   const [isLoading, setIsLoading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [suggestedPlotPoints, setSuggestedPlotPoints] = useState<Partial<PlotPoint>[]>([]);
-  const [suggestedCharacters, setSuggestedCharacters] = useState<Partial<Character>[]>([]);
-  const [suggestedLocations, setSuggestedLocations] = useState<Partial<Location>[]>([]);
+  const [suggestedCharacters, setSuggestedCharacters] = useState<EntitySuggestion[]>([]);
+  const [suggestedLocations, setSuggestedLocations] = useState<EntitySuggestion[]>([]);
 
   const activeManuscript = project.manuscripts.find(m => m.id === project.activeManuscriptId);
 
@@ -35,10 +40,10 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
 
   const handleNewManuscript = () => {
     const title = window.prompt("Introduce el título para el nuevo manuscrito:", "Nuevo Borrador");
-    if (title) {
+    if (title && title.trim()) {
         const newManuscript = {
             id: crypto.randomUUID(),
-            title,
+            title: title.trim(),
             content: ''
         };
         setProject(prev => ({
@@ -46,6 +51,37 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
             manuscripts: [...prev.manuscripts, newManuscript],
             activeManuscriptId: newManuscript.id
         }));
+    }
+  };
+
+  const handleEditManuscriptTitle = () => {
+    if (!activeManuscript) return;
+    const newTitle = window.prompt("Introduce el nuevo título para el manuscrito:", activeManuscript.title);
+    if (newTitle && newTitle.trim() !== '') {
+        setProject(prev => ({
+            ...prev,
+            manuscripts: prev.manuscripts.map(m =>
+                m.id === prev.activeManuscriptId ? { ...m, title: newTitle.trim() } : m
+            ),
+        }));
+    }
+  };
+
+  const handleDeleteManuscript = () => {
+    if (!activeManuscript || project.manuscripts.length <= 1) {
+        alert("No puedes eliminar el único manuscrito.");
+        return;
+    }
+
+    if (window.confirm(`¿Estás seguro de que quieres eliminar "${activeManuscript.title}"? Esta acción no se puede deshacer.`)) {
+        setProject(prev => {
+            const remainingManuscripts = prev.manuscripts.filter(m => m.id !== prev.activeManuscriptId);
+            return {
+                ...prev,
+                manuscripts: remainingManuscripts,
+                activeManuscriptId: remainingManuscripts[0]?.id || '', // Switch to the first remaining one
+            };
+        });
     }
   };
   
@@ -146,7 +182,7 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
     setSuggestedPlotPoints(prev => prev.filter(p => p.title !== suggestion.title));
   };
   
-  const addSuggestedCharacter = (suggestion: Partial<Character>) => {
+  const addSuggestedCharacter = (suggestion: EntitySuggestion) => {
     const newCharacter: Character = {
         id: crypto.randomUUID(),
         name: suggestion.name || 'Sin Nombre',
@@ -159,7 +195,7 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
     setSuggestedCharacters(prev => prev.filter(c => c.name !== suggestion.name));
   };
   
-  const addSuggestedLocation = (suggestion: Partial<Location>) => {
+  const addSuggestedLocation = (suggestion: EntitySuggestion) => {
     const newLocation: Location = {
         id: crypto.randomUUID(),
         name: suggestion.name || 'Sin Nombre',
@@ -205,6 +241,8 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
                     ))}
                 </select>
                 <button onClick={handleNewManuscript} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600" title="Nuevo Manuscrito"><PlusIcon className="h-5 w-5"/></button>
+                <button onClick={handleEditManuscriptTitle} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600" title="Editar Título"><EditIcon className="h-5 w-5"/></button>
+                <button onClick={handleDeleteManuscript} disabled={project.manuscripts.length <= 1} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Eliminar Manuscrito"><TrashIcon className="h-5 w-5"/></button>
                 <button onClick={handleExportManuscript} className="p-2 bg-brand-secondary rounded-md hover:bg-slate-600" title="Exportar Manuscrito"><ExportIcon className="h-5 w-5"/></button>
             </div>
           </div>
@@ -264,7 +302,10 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
                             <div className='space-y-2'>
                                 {suggestedCharacters.map((c, index) => (
                                     <div key={`c-${index}`} className='bg-slate-900 p-2 rounded-md text-sm flex justify-between items-center'>
-                                        <p className='font-semibold'>{c.name}</p>
+                                        <div>
+                                            <p className='font-semibold'>{c.name}</p>
+                                            <p className='text-xs text-brand-text-secondary italic mt-1'>"{c.justification}"</p>
+                                        </div>
                                         <button onClick={() => addSuggestedCharacter(c)} className='flex-shrink-0 ml-2 p-1 bg-slate-600 text-white rounded-md hover:bg-slate-500 text-xs'>Añadir</button>
                                     </div>
                                 ))}
@@ -277,7 +318,10 @@ export const CreationEngine: React.FC<CreationEngineProps> = ({ project, setProj
                             <div className='space-y-2'>
                                 {suggestedLocations.map((l, index) => (
                                     <div key={`l-${index}`} className='bg-slate-900 p-2 rounded-md text-sm flex justify-between items-center'>
-                                        <p className='font-semibold'>{l.name}</p>
+                                        <div>
+                                            <p className='font-semibold'>{l.name}</p>
+                                            <p className='text-xs text-brand-text-secondary italic mt-1'>"{l.justification}"</p>
+                                        </div>
                                         <button onClick={() => addSuggestedLocation(l)} className='flex-shrink-0 ml-2 p-1 bg-slate-600 text-white rounded-md hover:bg-slate-500 text-xs'>Añadir</button>
                                     </div>
                                 ))}

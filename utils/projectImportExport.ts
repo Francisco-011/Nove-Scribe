@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { Project } from '../types';
+import type { Project, GeneratedImage } from '../types';
 
 // Helper to convert data URL to blob
 const dataURLtoBlob = (dataurl: string) => {
@@ -33,8 +33,6 @@ const getMimeType = (filename: string): string => {
 export const exportProject = async (project: Project) => {
     try {
         const zip = new JSZip();
-        // Paso 1: Crear una copia profunda de los datos del proyecto.
-        // Esto evita modificar el estado actual de la aplicación.
         const projectData = JSON.parse(JSON.stringify(project)); 
         const imgFolder = zip.folder('images');
 
@@ -42,37 +40,39 @@ export const exportProject = async (project: Project) => {
             throw new Error("Could not create images folder in zip");
         }
 
-        // Paso 2: Procesar y etiquetar cada imagen.
-        // Esta función se encarga de convertir las imágenes de Base64 a archivos binarios
-        // y de crear un nombre de archivo único y descriptivo para cada una.
         const processItem = (item: { id: string, imageUrl?: string }, type: string) => {
             if (item.imageUrl && item.imageUrl.startsWith('data:image/')) {
                 const blob = dataURLtoBlob(item.imageUrl);
                 if (blob) {
                     const extension = blob.type.split('/')[1] || 'png';
-                    // Etiquetado: El nombre del archivo se construye usando el tipo de entidad (ej: 'character')
-                    // y su ID único. Esto garantiza que cada imagen tenga una referencia inequívoca.
-                    // Ejemplo: 'character-1a2b3c4d.png'
                     const filename = `${type}-${item.id}.${extension}`;
                     imgFolder.file(filename, blob);
-                    
-                    // Se reemplaza el dato Base64 en el JSON por el nombre del archivo etiquetado.
-                    // En la importación, este nombre de archivo se usará para volver a vincular la imagen.
                     item.imageUrl = filename; 
                 }
             }
         };
+
+        const processGalleryImage = (item: { id: string, src?: string }) => {
+            if (item.src && item.src.startsWith('data:image/')) {
+                const blob = dataURLtoBlob(item.src);
+                if (blob) {
+                    const extension = blob.type.split('/')[1] || 'png';
+                    const filename = `gallery-${item.id}.${extension}`;
+                    imgFolder.file(filename, blob);
+                    item.src = filename;
+                }
+            }
+        };
         
-        // Se aplica el proceso de etiquetado a todas las entidades que pueden tener imágenes.
         projectData.memoryCore.characters.forEach((char: any) => processItem(char, 'character'));
         projectData.memoryCore.locations.forEach((loc: any) => processItem(loc, 'location'));
         projectData.memoryCore.plotPoints.forEach((plot: any) => processItem(plot, 'plot'));
+        if(projectData.gallery) {
+            projectData.gallery.forEach((img: any) => processGalleryImage(img));
+        }
 
-        // Paso 3: Guardar el archivo JSON actualizado en el ZIP.
-        // Este JSON ahora contiene las referencias a los archivos de imagen en lugar de los datos Base64.
         zip.file('project.json', JSON.stringify(projectData, null, 2));
 
-        // Paso 4: Generar el archivo ZIP y ofrecerlo para descarga.
         const zipBlob = await zip.generateAsync({ type: 'blob' });
 
         const link = document.createElement('a');
@@ -99,13 +99,13 @@ export const importProject = async (zipFile: File): Promise<Omit<Project, 'id'>>
         throw new Error('El archivo ZIP no contiene un project.json válido.');
     }
 
-    // Paso 1: Cargar la estructura completa de datos.
-    // La variable 'projectData' ahora contiene toda la información del proyecto
-    // (personajes, ubicaciones, trama, manuscritos) con todos sus campos de texto intactos.
     const projectData: Project = JSON.parse(await projectFile.async('string'));
 
-    // Paso 2: Preparar la reconstrucción de imágenes.
-    // Se crea un mapa para almacenar las imágenes decodificadas del ZIP.
+    // Backwards compatibility for projects without a gallery
+    if (!projectData.gallery) {
+        projectData.gallery = [];
+    }
+
     const imageMap = new Map<string, string>();
     const imageFolder = loadedZip.folder('images');
 
@@ -116,29 +116,32 @@ export const importProject = async (zipFile: File): Promise<Omit<Project, 'id'>>
                 const base64 = await file.async('base64');
                 const mimeType = getMimeType(file.name);
                 const dataUrl = `data:${mimeType};base64,${base64}`;
-                imageMap.set(file.name, dataUrl); // Se asocia el nombre de archivo con su data URL.
+                imageMap.set(file.name, dataUrl);
             };
             imagePromises.push(promise());
         });
         await Promise.all(imagePromises);
     }
     
-    // Paso 3: Vincular imágenes a sus entidades correspondientes.
-    // Esta función se asegura de que cada imagen se vincule correctamente con su
-    // entidad original (personaje, ubicación, etc.) sin alterar ningún otro dato.
     const reconstructItem = (item: { id: string, imageUrl?: string }) => {
         if (item.imageUrl && imageMap.has(item.imageUrl)) {
-            // Se restaura la imagen en formato Base64 en el campo 'imageUrl' correcto.
             item.imageUrl = imageMap.get(item.imageUrl);
         }
     };
     
+    const reconstructGalleryImage = (item: GeneratedImage) => {
+        if (item.src && imageMap.has(item.src)) {
+            item.src = imageMap.get(item.src)!;
+        }
+    };
+
     projectData.memoryCore.characters.forEach(reconstructItem);
     projectData.memoryCore.locations.forEach(reconstructItem);
     projectData.memoryCore.plotPoints.forEach(reconstructItem);
+    if(projectData.gallery) {
+        projectData.gallery.forEach(reconstructGalleryImage);
+    }
     
-    // Se devuelve el objeto de proyecto completo y reconstruido.
-    // La función que lo llama (onCreateProject) le asignará un nuevo ID local.
     const { id, ...projectWithoutId } = projectData;
     return projectWithoutId;
 };

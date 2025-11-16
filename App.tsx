@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Project } from './types';
 import { View } from './types';
 import { MemoryCoreManager } from './components/MemoryCoreManager';
@@ -35,18 +35,27 @@ const initialProject: Omit<Project, 'id'> = {
     }
   ],
   activeManuscriptId: initialManuscriptId,
+  gallery: [],
 };
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>(View.CreationEngine);
+  const [isSaved, setIsSaved] = useState(false);
+  const saveIndicatorTimeout = useRef<number>();
 
   useEffect(() => {
     try {
-      const savedProjects = localStorage.getItem('nova-scribe-projects');
-      if (savedProjects) {
-        setProjects(JSON.parse(savedProjects));
+      const savedProjectsJSON = localStorage.getItem('nova-scribe-projects');
+      if (savedProjectsJSON) {
+        const parsedProjects: Project[] = JSON.parse(savedProjectsJSON);
+        // Data migration: ensure all projects have a gallery array to prevent crashes with older data structures.
+        const migratedProjects = parsedProjects.map(p => ({
+            ...p,
+            gallery: Array.isArray(p.gallery) ? p.gallery : [],
+        }));
+        setProjects(migratedProjects);
       } else {
         const firstProject = { ...initialProject, id: crypto.randomUUID() };
         setProjects([firstProject]);
@@ -59,10 +68,18 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (projects.length > 0) {
+    if (projects.length > 0 && activeProjectId) {
       localStorage.setItem('nova-scribe-projects', JSON.stringify(projects));
+      
+      clearTimeout(saveIndicatorTimeout.current);
+      setIsSaved(true);
+      saveIndicatorTimeout.current = window.setTimeout(() => {
+          setIsSaved(false);
+      }, 2000);
     }
-  }, [projects]);
+    
+    return () => clearTimeout(saveIndicatorTimeout.current);
+  }, [projects, activeProjectId]);
 
   const activeProject = projects.find(p => p.id === activeProjectId);
   
@@ -86,6 +103,9 @@ const App: React.FC = () => {
   const handleDeleteProject = (projectId: string) => {
     if (window.confirm("¿Estás seguro de que quieres eliminar este proyecto? Esta acción no se puede deshacer.")) {
         setProjects(prev => prev.filter(p => p.id !== projectId));
+        if (activeProjectId === projectId) {
+            setActiveProjectId(null);
+        }
     }
   };
 
@@ -137,9 +157,14 @@ const App: React.FC = () => {
                  <button onClick={() => setActiveProjectId(null)} className="p-2 rounded-full hover:bg-brand-secondary" title="Volver al Panel de Proyectos">
                     <HomeIcon className="h-5 w-5 text-brand-text-secondary hover:text-brand-accent" />
                  </button>
-                 <div className="text-xl font-bold">
-                    Nova<span className="text-brand-accent">Scribe</span>
-                    <span className="text-lg font-normal text-brand-text-secondary ml-3 hidden md:inline">/ {activeProject.title}</span>
+                 <div className="flex items-center space-x-3">
+                    <div className="text-xl font-bold">
+                        Nova<span className="text-brand-accent">Scribe</span>
+                        <span className="text-lg font-normal text-brand-text-secondary ml-3 hidden md:inline">/ {activeProject.title}</span>
+                    </div>
+                    <div className="w-20">
+                      {isSaved && <span className="text-sm text-green-400 transition-opacity duration-300">Guardado</span>}
+                    </div>
                  </div>
             </div>
             <nav className="flex items-center space-x-2">

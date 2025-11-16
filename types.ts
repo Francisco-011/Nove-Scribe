@@ -43,6 +43,12 @@ export interface Manuscript {
   content: string;
 }
 
+export interface GeneratedImage {
+  id: string;
+  src: string;
+  assignedToId?: string; // e.g. "character-1"
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -51,4 +57,5 @@ export interface Project {
   memoryCore: MemoryCoreData;
   manuscripts: Manuscript[];
   activeManuscriptId: string;
+  gallery: GeneratedImage[];
 }

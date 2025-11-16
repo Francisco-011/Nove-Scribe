@@ -1,16 +1,11 @@
 import React, { useState, useRef } from 'react';
-import type { Project, Character, Location, PlotPoint } from '../types';
+import type { Project, Character, Location, PlotPoint, GeneratedImage } from '../types';
 import { generateCharacterImage, generateLocationImage, generatePlotPointImage, generateSceneImage, suggestScenesFromManuscript } from '../services/geminiService';
 import { Spinner, SparklesIcon, UploadIcon, TrashIcon, DownloadIcon } from './Icons';
 
 interface VisualStudioProps {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
-}
-
-interface GeneratedImage {
-    id: string;
-    src: string;
 }
 
 interface SuggestedScene {
@@ -41,7 +36,6 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   const [sceneLocationId, setSceneLocationId] = useState<string>('none');
   
   const [suggestedScenes, setSuggestedScenes] = useState<SuggestedScene[]>([]);
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +61,8 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
         }
         
         if (imageUrl) {
-            setGeneratedImages(prev => [{ id: crypto.randomUUID(), src: imageUrl }, ...prev]);
+            const newImage: GeneratedImage = { id: crypto.randomUUID(), src: imageUrl };
+            setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
         }
     } catch (error) {
       console.error(`Failed to generate ${type} image`, error);
@@ -102,23 +97,59 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
     }
   }
 
-  const handleAssignImage = (imageSrc: string, target: string) => {
-    if (!target || target === "none") return;
-    const [type, id] = target.split('-');
-    
-    setProject(prev => {
-        const newMemoryCore = { ...prev.memoryCore };
-        if (type === 'character') newMemoryCore.characters = newMemoryCore.characters.map(c => c.id === id ? { ...c, imageUrl: imageSrc } : c);
-        else if (type === 'location') newMemoryCore.locations = newMemoryCore.locations.map(l => l.id === id ? { ...l, imageUrl: imageSrc } : l);
-        else if (type === 'plot') newMemoryCore.plotPoints = newMemoryCore.plotPoints.map(p => p.id === id ? { ...p, imageUrl: imageSrc } : p);
+ const handleAssignImage = (image: GeneratedImage, newTargetId: string) => { // newTargetId is "type-id" or "none"
+    setProject(prevProject => {
+        const newProject = JSON.parse(JSON.stringify(prevProject));
+        const oldTargetId = image.assignedToId;
 
-        alert('¡Imagen asignada con éxito!');
-        return { ...prev, memoryCore: newMemoryCore };
+        // --- Step 1: Update the old target entity (remove image URL) ---
+        if (oldTargetId && oldTargetId !== newTargetId) {
+            const [oldType, oldId] = oldTargetId.split('-');
+            const unassign = <T extends {id: string}>(items: T[]) => items.map(item => 
+                item.id === oldId ? { ...item, imageUrl: '' } : item
+            );
+            if (oldType === 'character') newProject.memoryCore.characters = unassign(newProject.memoryCore.characters);
+            if (oldType === 'location') newProject.memoryCore.locations = unassign(newProject.memoryCore.locations);
+            if (oldType === 'plot') newProject.memoryCore.plotPoints = unassign(newProject.memoryCore.plotPoints);
+        }
+
+        // --- Step 2: Update the new target entity (add image URL) ---
+        if (newTargetId !== 'none') {
+            const [newType, newId] = newTargetId.split('-');
+            const assign = <T extends {id: string}>(items: T[]) => items.map(item => 
+                item.id === newId ? { ...item, imageUrl: image.src } : item
+            );
+            if (newType === 'character') newProject.memoryCore.characters = assign(newProject.memoryCore.characters);
+            if (newType === 'location') newProject.memoryCore.locations = assign(newProject.memoryCore.locations);
+            if (newType === 'plot') newProject.memoryCore.plotPoints = assign(newProject.memoryCore.plotPoints);
+        }
+
+        // --- Step 3: Update the gallery ---
+        newProject.gallery = newProject.gallery.map((galleryImage: GeneratedImage) => {
+            // Unassign any other image that was on the new target
+            if (galleryImage.id !== image.id && galleryImage.assignedToId === newTargetId && newTargetId !== 'none') {
+                return { ...galleryImage, assignedToId: undefined };
+            }
+            // Update the current image being assigned/unassigned
+            if (galleryImage.id === image.id) {
+                return { ...galleryImage, assignedToId: newTargetId === 'none' ? undefined : newTargetId };
+            }
+            return galleryImage;
+        });
+
+        return newProject;
     });
-  };
+
+    if (newTargetId !== 'none') {
+        alert('¡Imagen asignada con éxito!');
+    } else {
+        alert('¡Asignación eliminada!');
+    }
+};
+
 
   const handleDeleteImage = (id: string) => {
-    setGeneratedImages(prev => prev.filter(image => image.id !== id));
+    setProject(prev => ({ ...prev, gallery: (prev.gallery || []).filter(img => img.id !== id) }));
   };
   
   const handleDownloadImage = (image: GeneratedImage) => {
@@ -139,7 +170,8 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
         reader.onload = (loadEvent) => {
             const base64String = loadEvent.target?.result as string;
             if (base64String) {
-                setGeneratedImages(prev => [{ id: crypto.randomUUID(), src: base64String }, ...prev]);
+                const newImage: GeneratedImage = { id: crypto.randomUUID(), src: base64String };
+                setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
             }
         };
         reader.readAsDataURL(file);
@@ -157,6 +189,8 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
         return newSet;
     });
   }
+  
+  const gallery = project.gallery || [];
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -242,13 +276,13 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                 </button>
            </div>
            <div className="bg-slate-900 border border-brand-secondary rounded-lg p-4 h-[80vh] overflow-y-auto">
-                {generatedImages.length === 0 ? (
+                {gallery.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                         <p className="text-brand-text-secondary">Tus imágenes generadas aparecerán aquí.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {generatedImages.map((image) => (
+                        {gallery.map((image) => (
                             <div key={image.id} className="bg-brand-secondary p-2 rounded-lg space-y-2 group relative">
                                 <img src={image.src} alt={`Generated art ${image.id}`} className="rounded-lg w-full h-auto object-cover" />
                                 <div className="absolute top-3 right-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -259,8 +293,12 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                                         <TrashIcon className="h-4 w-4" />
                                     </button>
                                 </div>
-                                <select defaultValue="none" onChange={(e) => handleAssignImage(image.src, e.target.value)} className="w-full bg-slate-700 rounded-md p-2 text-sm focus:ring-1 focus:ring-brand-accent focus:outline-none">
-                                    <option value="none" disabled>Asignar a...</option>
+                                <select 
+                                    value={image.assignedToId || 'none'} 
+                                    onChange={(e) => handleAssignImage(image, e.target.value)} 
+                                    className="w-full bg-slate-700 rounded-md p-2 text-sm focus:ring-1 focus:ring-brand-accent focus:outline-none"
+                                >
+                                    <option value="none">Sin asignar</option>
                                     <optgroup label="Personajes">{project.memoryCore.characters.map(c => <option key={c.id} value={`character-${c.id}`}>{c.name}</option>)}</optgroup>
                                     <optgroup label="Ubicaciones">{project.memoryCore.locations.map(l => <option key={l.id} value={`location-${l.id}`}>{l.name}</option>)}</optgroup>
                                     <optgroup label="Puntos de Trama">{project.memoryCore.plotPoints.map(p => <option key={p.id} value={`plot-${p.id}`}>{p.title}</option>)}</optgroup>
