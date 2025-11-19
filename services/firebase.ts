@@ -1,3 +1,4 @@
+
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
@@ -242,7 +243,8 @@ export const subscribeToProjectList = (onUpdate: (projects: Project[]) => void) 
             activeManuscriptId: data.activeManuscriptId,
             gallery: [], 
             memoryCore: { characters: [], locations: [], plotPoints: [] },
-            manuscripts: []
+            manuscripts: [],
+            lastModified: data.lastModified
         } as Project;
     });
     projectsMeta.sort((a: any, b: any) => {

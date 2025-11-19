@@ -138,11 +138,24 @@ const MemoryModal: React.FC<{
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 rounded-lg shadow-xl p-6 w-full max-w-lg border border-brand-secondary overflow-y-auto max-h-[90vh] flex flex-col">
                 <h3 className="text-xl font-bold mb-4 text-brand-accent">{`${title} ${viewName}`}</h3>
-                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-form-type="other">
                     {renderFormFields()}
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
-                        <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-secondary rounded hover:bg-slate-600 transition-colors">Cancelar</button>
-                        <button type="submit" className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors font-semibold">Guardar</button>
+                        <button 
+                            type="button" 
+                            onClick={onClose} 
+                            className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-secondary rounded hover:bg-slate-600 transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button 
+                            type="submit"
+                            data-lpignore="true"
+                            data-form-type="other"
+                            className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors font-semibold"
+                        >
+                            Guardar
+                        </button>
                     </div>
                 </form>
             </div>

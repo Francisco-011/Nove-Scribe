@@ -60,4 +60,5 @@ export interface Project {
   manuscripts: Manuscript[];
   activeManuscriptId: string;
   gallery: GeneratedImage[];
+  lastModified?: string;
 }
