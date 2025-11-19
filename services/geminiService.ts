@@ -1,10 +1,20 @@
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import type { Project, Character, Location, PlotPoint } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 function buildContextPrompt(userPrompt: string, project: Project): string {
-  let context = `Eres un asistente de escritura de novelas. Tu tarea es generar contenido narrativo atractivo basado en el contexto del proyecto y la solicitud del usuario. Asegúrate de que el resultado sea coherente con el mundo y las personalidades de los personajes establecidos.
+  // Definir el estilo por defecto si no existe
+  const narrativeStyle = project.writingStyle && project.writingStyle.trim() !== '' 
+    ? project.writingStyle 
+    : "Narrativa estándar en tercera persona, equilibrada entre diálogos y descripciones, tono coherente con la sinopsis.";
+
+  let context = `Eres un asistente de escritura de novelas. Tu tarea es generar contenido narrativo atractivo basado en el contexto del proyecto y la solicitud del usuario.
+
+INSTRUCCIÓN DE ESTILO Y TONO (CRÍTICO):
+Debes escribir utilizando el siguiente estilo: "${narrativeStyle}".
+Asegúrate de que la voz narrativa, el punto de vista (1ra/3ra persona) y la proporción diálogo/narración se ajusten a esta directriz.
 
 CONTEXTO DEL PROYECTO:
 ---
@@ -132,6 +142,187 @@ export const generateCharacterDetails = async (prompt: string): Promise<Partial<
         throw error;
     }
 };
+
+// Nueva función para enriquecer un personaje existente con contexto de otros personajes
+export const enrichCharacterProfile = async (
+    partialChar: Partial<Character>, 
+    synopsis: string,
+    otherCharactersSummary: string = ''
+): Promise<Partial<Character>> => {
+    try {
+        const prompt = `Actúa como un consultor literario experto. Tengo un personaje parcialmente definido para una novela.
+        
+        SINOPSIS DE LA NOVELA: "${synopsis}"
+        
+        OTROS PERSONAJES EN LA HISTORIA (Úsalos para crear relaciones coherentes):
+        ${otherCharactersSummary || 'No hay otros personajes definidos aún.'}
+        
+        DATOS ACTUALES DEL PERSONAJE A MEJORAR:
+        Nombre: ${partialChar.name}
+        Rol: ${partialChar.role}
+        Edad: ${partialChar.age}
+        Psicología actual: ${partialChar.psychology}
+        
+        TU TAREA:
+        Rellena los campos vacíos y enriquece los existentes para crear un personaje tridimensional, complejo y coherente con la sinopsis y los otros personajes.
+        NO cambies el nombre ni el rol fundamental, solo expándelos.
+        
+        Genera:
+        1. 'psychology': Profundiza en sus miedos y deseos.
+        2. 'backstory': Un pasado que explique su personalidad actual.
+        3. 'appearance': Descripción física detallada y distintiva.
+        4. 'skills': Habilidades, talentos o poderes.
+        5. 'relationships': Cómo se relaciona con otros personajes existentes o nuevos (amigos, enemigos, familia).
+        
+        Responde únicamente con un objeto JSON en español.`;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING },
+                        age: { type: Type.STRING },
+                        role: { type: Type.STRING },
+                        psychology: { type: Type.STRING },
+                        backstory: { type: Type.STRING },
+                        relationships: { type: Type.STRING },
+                        appearance: { type: Type.STRING },
+                        skills: { type: Type.STRING },
+                    },
+                    required: ["name", "age", "role", "psychology", "backstory", "relationships", "appearance", "skills"]
+                },
+            },
+        });
+        
+        let jsonStr = response.text.trim();
+        return JSON.parse(jsonStr);
+
+    } catch (error) {
+        console.error("Error enriqueciendo personaje:", error);
+        throw error;
+    }
+};
+
+export const evolveCharactersFromManuscript = async (project: Project): Promise<{id: string, name: string, psychology: string, relationships: string}[]> => {
+    const activeManuscript = project.manuscripts.find(m => m.id === project.activeManuscriptId);
+    if (!activeManuscript || !activeManuscript.content) return [];
+
+    const charactersJson = JSON.stringify(project.memoryCore.characters.map(c => ({
+        id: c.id,
+        name: c.name,
+        psychology: c.psychology,
+        relationships: c.relationships
+    })));
+
+    const prompt = `Eres un biógrafo de personajes y analista narrativo. He escrito un nuevo capítulo y necesito actualizar la "Memoria Viva" de mis personajes.
+    
+    MANUSCRITO RECIENTE:
+    "${activeManuscript.content}"
+
+    PERSONAJES ACTUALES (Historial previo):
+    ${charactersJson}
+
+    TU TAREA (CRÍTICA - PRESERVACIÓN DE HISTORIA):
+    1. Lee el manuscrito e identifica si algún personaje ha experimentado cambios significativos en su **psicología** o en sus **relaciones**.
+    2. IMPORTANTE: **NO BORRES** ni resumas excesivamente la información anterior. Queremos una biografía acumulativa.
+    3. Si la relación cambió (de amigos a enemigos), NO elimines que fueron amigos. Añade el nuevo desarrollo.
+       - Estructura sugerida: "[Contexto Original]. Sin embargo, tras los eventos recientes donde [acción], su relación se ha tornado [nuevo estado]."
+    4. Solo devuelve los personajes que han tenido una evolución clara en este texto.
+    
+    Responde únicamente con un array JSON de objetos con: 'id', 'name', 'psychology' (texto actualizado), 'relationships' (texto actualizado).`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            id: { type: Type.STRING },
+                            name: { type: Type.STRING },
+                            psychology: { type: Type.STRING, description: "Descripción psicológica acumulativa." },
+                            relationships: { type: Type.STRING, description: "Historial de relaciones acumulativo." },
+                        },
+                        required: ["id", "name", "psychology", "relationships"]
+                    },
+                },
+            },
+        });
+
+        let jsonStr = response.text.trim();
+        return JSON.parse(jsonStr);
+
+    } catch (error) {
+        console.error("Error evolucionando personajes:", error);
+        throw error;
+    }
+};
+
+export const evolveLocationsFromManuscript = async (project: Project): Promise<{id: string, name: string, description: string}[]> => {
+    const activeManuscript = project.manuscripts.find(m => m.id === project.activeManuscriptId);
+    if (!activeManuscript || !activeManuscript.content) return [];
+    if (project.memoryCore.locations.length === 0) return [];
+
+    const locationsJson = JSON.stringify(project.memoryCore.locations.map(l => ({
+        id: l.id,
+        name: l.name,
+        description: l.description
+    })));
+
+    const prompt = `Eres un arquitecto de mundos y cartógrafo narrativo. He escrito un nuevo capítulo y necesito actualizar el estado físico y atmosférico de mis ubicaciones (World Atlas).
+    
+    MANUSCRITO RECIENTE:
+    "${activeManuscript.content}"
+
+    UBICACIONES ACTUALES:
+    ${locationsJson}
+
+    TU TAREA:
+    1. Analiza si alguna ubicación mencionada ha sufrido cambios físicos (destrucción, renovación, cambio de estación, batalla) o atmosféricos.
+    2. MANTÉN LA HISTORIA DEL LUGAR. No borres la descripción base. Añade una sección de "Estado Actual" o integra los cambios narrativamente.
+       - Ejemplo: "Antiguamente un bosque verde (ver descripción original...), ahora yace calcinado tras el incendio..."
+    3. Solo devuelve las ubicaciones que han cambiado.
+
+    Responde únicamente con un array JSON de objetos con: 'id', 'name', 'description' (actualizada).`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            id: { type: Type.STRING },
+                            name: { type: Type.STRING },
+                            description: { type: Type.STRING, description: "Descripción actualizada reflejando los cambios del entorno." },
+                        },
+                        required: ["id", "name", "description"]
+                    },
+                },
+            },
+        });
+
+        let jsonStr = response.text.trim();
+        return JSON.parse(jsonStr);
+
+    } catch (error) {
+        console.error("Error evolucionando ubicaciones:", error);
+        throw error; // O retornar [] si prefieres que no rompa el flujo
+    }
+};
+
 
 export const generateLocationDetails = async (prompt: string): Promise<Partial<Location>> => {
     try {
@@ -455,7 +646,7 @@ export const suggestScenesFromManuscript = async (project: Project): Promise<{ti
     }
 }
 
-export const generateProjectIdea = async (prompt: string): Promise<{ title: string; synopsis: string; styleSeed: string; characters: Partial<Character>[]; plotPoints: Partial<PlotPoint>[]; }> => {
+export const generateProjectIdea = async (prompt: string): Promise<{ title: string; synopsis: string; styleSeed: string; writingStyle: string; characters: Partial<Character>[]; plotPoints: Partial<PlotPoint>[]; }> => {
     try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-pro",
@@ -465,9 +656,10 @@ Idea inicial: "${prompt}"
 Genera:
 1. Un 'title' evocador.
 2. Una 'synopsis' de 2 a 3 párrafos.
-3. Una 'styleSeed' descriptiva para la generación de imágenes.
-4. Un array 'characters' con 2-3 perfiles de personajes clave. Cada personaje debe tener 'name', 'age', 'role', y 'psychology'.
-5. Un array 'plotPoints' con 3-5 puntos clave iniciales de la trama. Cada punto debe tener 'title' y 'description'.
+3. Una 'styleSeed' descriptiva para la generación de imágenes (ej: Cyberpunk Noir, Acuarela Ghibli).
+4. Un 'writingStyle' descriptivo que defina el tono narrativo (ej: Primera persona sarcástica, Tercera persona omnisciente y oscura).
+5. Un array 'characters' con 2-3 perfiles de personajes clave COMPLETOS. Debes inventar su apariencia, psicología, trasfondo y relaciones, no dejes campos vacíos.
+6. Un array 'plotPoints' con 3-5 puntos clave iniciales de la trama. Cada punto debe tener 'title' y 'description'.
 
 Todos los valores deben estar en español. Responde únicamente con un objeto JSON.`,
             config: {
@@ -478,6 +670,7 @@ Todos los valores deben estar en español. Responde únicamente con un objeto JS
                         title: { type: Type.STRING },
                         synopsis: { type: Type.STRING },
                         styleSeed: { type: Type.STRING },
+                        writingStyle: { type: Type.STRING },
                         characters: {
                             type: Type.ARRAY,
                             items: {
@@ -487,8 +680,12 @@ Todos los valores deben estar en español. Responde únicamente con un objeto JS
                                     age: { type: Type.STRING },
                                     role: { type: Type.STRING },
                                     psychology: { type: Type.STRING },
+                                    backstory: { type: Type.STRING },
+                                    relationships: { type: Type.STRING },
+                                    appearance: { type: Type.STRING },
+                                    skills: { type: Type.STRING },
                                 },
-                                required: ["name", "age", "role", "psychology"],
+                                required: ["name", "age", "role", "psychology", "backstory", "relationships", "appearance", "skills"],
                             }
                         },
                         plotPoints: {
@@ -503,7 +700,7 @@ Todos los valores deben estar en español. Responde únicamente con un objeto JS
                             }
                         }
                     },
-                    required: ["title", "synopsis", "styleSeed", "characters", "plotPoints"],
+                    required: ["title", "synopsis", "styleSeed", "writingStyle", "characters", "plotPoints"],
                 },
             },
         });

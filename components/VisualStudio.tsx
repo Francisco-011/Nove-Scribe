@@ -13,6 +13,30 @@ interface SuggestedScene {
     prompt: string;
 }
 
+// --- Utility Functions for Image Size ---
+
+const getBase64SizeInBytes = (base64String: string): number => {
+    let padding = 0;
+    if (base64String.endsWith('==')) padding = 2;
+    else if (base64String.endsWith('=')) padding = 1;
+    
+    // Length of base64 string * 0.75 gives rough byte size
+    return (base64String.length * 0.75) - padding;
+};
+
+const formatBytes = (bytes: number, decimals = 0) => {
+    if (!+bytes) return '0 B';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+};
+
+const SAFE_LIMIT_BYTES = 950 * 1024; // 950 KB Safe limit (Firestore doc limit is 1MB)
+
+// -----------------------------------------
+
 const GeneratorButton: React.FC<{onClick: () => void; isLoading: boolean; disabled?: boolean; text: string}> = ({onClick, isLoading, disabled, text}) => (
      <button
         onClick={onClick}
@@ -22,6 +46,32 @@ const GeneratorButton: React.FC<{onClick: () => void; isLoading: boolean; disabl
         {isLoading ? <Spinner className="h-5 w-5"/> : text}
     </button>
 )
+
+const DeleteConfirmModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+}> = ({ isOpen, onClose, onConfirm }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60] backdrop-blur-sm">
+            <div className="bg-slate-900 rounded-lg shadow-2xl p-6 w-full max-w-md border border-red-500/50">
+                <h3 className="text-xl font-bold mb-2 text-red-400">Eliminar Imagen</h3>
+                <p className="text-brand-text-secondary mb-6">¿Estás seguro de que quieres eliminar esta imagen de la galería? Esta acción es irreversible.</p>
+                <div className="flex justify-end space-x-3">
+                    <button onClick={onClose} className="px-4 py-2 bg-brand-secondary text-white rounded hover:bg-slate-600 transition-colors">
+                        Cancelar
+                    </button>
+                    <button onClick={onConfirm} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors shadow-lg flex items-center space-x-2">
+                        <TrashIcon className="h-4 w-4"/>
+                        <span>Eliminar</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 
 export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject }) => {
@@ -36,6 +86,8 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   const [sceneLocationId, setSceneLocationId] = useState<string>('none');
   
   const [suggestedScenes, setSuggestedScenes] = useState<SuggestedScene[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [imageToDelete, setImageToDelete] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,8 +113,14 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
         }
         
         if (imageUrl) {
-            const newImage: GeneratedImage = { id: crypto.randomUUID(), src: imageUrl };
-            setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
+            // Validate Size from AI
+            const size = getBase64SizeInBytes(imageUrl);
+            if (size > SAFE_LIMIT_BYTES) {
+                alert(`La imagen generada por la IA es inusualmente grande (${formatBytes(size)}) y supera el límite de seguridad de 950KB. No se ha guardado para proteger la base de datos.`);
+            } else {
+                const newImage: GeneratedImage = { id: crypto.randomUUID(), src: imageUrl };
+                setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
+            }
         }
     } catch (error) {
       console.error(`Failed to generate ${type} image`, error);
@@ -102,7 +160,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
         const newProject = JSON.parse(JSON.stringify(prevProject));
         const oldTargetId = image.assignedToId;
 
-        // --- Step 1: Update the old target entity (remove image URL) ---
+        // --- Step 1: Update the old target entity (remove image URL/ID) ---
         if (oldTargetId && oldTargetId !== newTargetId) {
             const [oldType, oldId] = oldTargetId.split('-');
             const unassign = <T extends {id: string}>(items: T[]) => items.map(item => 
@@ -113,11 +171,12 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
             if (oldType === 'plot') newProject.memoryCore.plotPoints = unassign(newProject.memoryCore.plotPoints);
         }
 
-        // --- Step 2: Update the new target entity (add image URL) ---
+        // --- Step 2: Update the new target entity (ADD IMAGE ID, NOT BASE64) ---
+        // Critical for Firestore limit: We only store the ID of the image, not the base64 string again.
         if (newTargetId !== 'none') {
             const [newType, newId] = newTargetId.split('-');
             const assign = <T extends {id: string}>(items: T[]) => items.map(item => 
-                item.id === newId ? { ...item, imageUrl: image.src } : item
+                item.id === newId ? { ...item, imageUrl: image.id } : item 
             );
             if (newType === 'character') newProject.memoryCore.characters = assign(newProject.memoryCore.characters);
             if (newType === 'location') newProject.memoryCore.locations = assign(newProject.memoryCore.locations);
@@ -139,17 +198,19 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
 
         return newProject;
     });
-
-    if (newTargetId !== 'none') {
-        alert('¡Imagen asignada con éxito!');
-    } else {
-        alert('¡Asignación eliminada!');
-    }
 };
 
+  const promptDeleteImage = (id: string) => {
+      setImageToDelete(id);
+      setDeleteModalOpen(true);
+  }
 
-  const handleDeleteImage = (id: string) => {
-    setProject(prev => ({ ...prev, gallery: (prev.gallery || []).filter(img => img.id !== id) }));
+  const confirmDeleteImage = () => {
+    if (imageToDelete) {
+        setProject(prev => ({ ...prev, gallery: (prev.gallery || []).filter(img => img.id !== imageToDelete) }));
+    }
+    setDeleteModalOpen(false);
+    setImageToDelete(null);
   };
   
   const handleDownloadImage = (image: GeneratedImage) => {
@@ -166,10 +227,24 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+        // 1. Check File Size (Binary)
+        if (file.size > SAFE_LIMIT_BYTES) {
+            alert(`La imagen seleccionada es demasiado pesada (${formatBytes(file.size)}). \n\nEl límite es 950KB para asegurar la sincronización en la nube. Por favor, comprime la imagen antes de subirla.`);
+            if (event.target) event.target.value = ''; // Reset input
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = (loadEvent) => {
             const base64String = loadEvent.target?.result as string;
             if (base64String) {
+                // 2. Check Base64 Size (Double check as encoding adds size)
+                const b64Size = getBase64SizeInBytes(base64String);
+                if (b64Size > SAFE_LIMIT_BYTES) {
+                     alert(`Al procesar la imagen, su tamaño aumentó a ${formatBytes(b64Size)}, superando el límite de 950KB. Intenta con una imagen más pequeña o comprimida.`);
+                     return;
+                }
+
                 const newImage: GeneratedImage = { id: crypto.randomUUID(), src: base64String };
                 setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
             }
@@ -195,6 +270,11 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   return (
     <div className="p-4 md:p-6 lg:p-8">
        <input type="file" ref={fileInputRef} onChange={handleImageUpload} style={{ display: 'none' }} accept="image/*" />
+      <DeleteConfirmModal 
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={confirmDeleteImage}
+      />
       <h2 className="text-2xl md:text-3xl font-bold mb-6 border-b-2 border-brand-secondary pb-2">Estudio Visual</h2>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -270,9 +350,9 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
         <div className="lg:col-span-2">
            <div className="flex justify-between items-center mb-2">
                 <h3 className="text-lg font-semibold text-brand-accent">Galería de Imágenes</h3>
-                <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-2 px-3 py-1 text-xs bg-brand-secondary text-white rounded-lg hover:bg-slate-600 transition-colors">
+                <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-2 px-3 py-1 text-xs bg-brand-secondary text-white rounded-lg hover:bg-slate-600 transition-colors border border-transparent hover:border-brand-accent">
                     <UploadIcon className="h-4 w-4"/>
-                    <span>Cargar Imagen</span>
+                    <span>Cargar (Máx 950KB)</span>
                 </button>
            </div>
            <div className="bg-slate-900 border border-brand-secondary rounded-lg p-4 h-[80vh] overflow-y-auto">
@@ -282,29 +362,38 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {gallery.map((image) => (
-                            <div key={image.id} className="bg-brand-secondary p-2 rounded-lg space-y-2 group relative">
-                                <img src={image.src} alt={`Generated art ${image.id}`} className="rounded-lg w-full h-auto object-cover" />
-                                <div className="absolute top-3 right-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => handleDownloadImage(image)} className="p-1.5 bg-black bg-opacity-50 rounded-full text-white hover:bg-sky-600 transition-colors" title="Descargar imagen">
-                                        <DownloadIcon className="h-4 w-4" />
-                                    </button>
-                                    <button onClick={() => handleDeleteImage(image.id)} className="p-1.5 bg-black bg-opacity-50 rounded-full text-white hover:bg-red-600 transition-colors" title="Eliminar imagen">
-                                        <TrashIcon className="h-4 w-4" />
-                                    </button>
+                        {gallery.map((image) => {
+                            const sizeBytes = getBase64SizeInBytes(image.src);
+                            const isHeavy = sizeBytes > 800 * 1024; // Warn if > 800KB
+                            return (
+                                <div key={image.id} className="bg-brand-secondary p-2 rounded-lg space-y-2 group relative">
+                                    <div className="relative">
+                                        <img src={image.src} alt={`Generated art ${image.id}`} className="rounded-lg w-full h-auto object-cover" />
+                                        <div className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold backdrop-blur-md ${isHeavy ? 'bg-yellow-500/80 text-black' : 'bg-black/60 text-white'}`}>
+                                            {formatBytes(sizeBytes)}
+                                        </div>
+                                    </div>
+                                    <div className="absolute top-3 right-3 flex space-x-2 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                                        <button onClick={() => handleDownloadImage(image)} className="p-1.5 bg-black bg-opacity-75 rounded-full text-white hover:bg-sky-600 transition-colors" title="Descargar imagen">
+                                            <DownloadIcon className="h-4 w-4" />
+                                        </button>
+                                        <button onClick={() => promptDeleteImage(image.id)} className="p-1.5 bg-black bg-opacity-75 rounded-full text-white hover:bg-red-600 transition-colors" title="Eliminar imagen">
+                                            <TrashIcon className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <select 
+                                        value={image.assignedToId || 'none'} 
+                                        onChange={(e) => handleAssignImage(image, e.target.value)} 
+                                        className="w-full bg-slate-700 rounded-md p-2 text-sm focus:ring-1 focus:ring-brand-accent focus:outline-none"
+                                    >
+                                        <option value="none">Sin asignar</option>
+                                        <optgroup label="Personajes">{project.memoryCore.characters.map(c => <option key={c.id} value={`character-${c.id}`}>{c.name}</option>)}</optgroup>
+                                        <optgroup label="Ubicaciones">{project.memoryCore.locations.map(l => <option key={l.id} value={`location-${l.id}`}>{l.name}</option>)}</optgroup>
+                                        <optgroup label="Puntos de Trama">{project.memoryCore.plotPoints.map(p => <option key={p.id} value={`plot-${p.id}`}>{p.title}</option>)}</optgroup>
+                                    </select>
                                 </div>
-                                <select 
-                                    value={image.assignedToId || 'none'} 
-                                    onChange={(e) => handleAssignImage(image, e.target.value)} 
-                                    className="w-full bg-slate-700 rounded-md p-2 text-sm focus:ring-1 focus:ring-brand-accent focus:outline-none"
-                                >
-                                    <option value="none">Sin asignar</option>
-                                    <optgroup label="Personajes">{project.memoryCore.characters.map(c => <option key={c.id} value={`character-${c.id}`}>{c.name}</option>)}</optgroup>
-                                    <optgroup label="Ubicaciones">{project.memoryCore.locations.map(l => <option key={l.id} value={`location-${l.id}`}>{l.name}</option>)}</optgroup>
-                                    <optgroup label="Puntos de Trama">{project.memoryCore.plotPoints.map(p => <option key={p.id} value={`plot-${p.id}`}>{p.title}</option>)}</optgroup>
-                                </select>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
            </div>

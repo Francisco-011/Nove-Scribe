@@ -1,3 +1,4 @@
+
 export enum View {
   MemoryCore = 'memory-core',
   CreationEngine = 'creation-engine',
@@ -54,6 +55,7 @@ export interface Project {
   title: string;
   synopsis: string;
   styleSeed: string;
+  writingStyle?: string; // Nuevo campo para definir el tono/estilo narrativo
   memoryCore: MemoryCoreData;
   manuscripts: Manuscript[];
   activeManuscriptId: string;

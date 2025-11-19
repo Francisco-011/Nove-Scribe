@@ -5,117 +5,177 @@ import { MemoryCoreManager } from './components/MemoryCoreManager';
 import { CreationEngine } from './components/CreationEngine';
 import { VisualStudio } from './components/VisualStudio';
 import { ProjectDashboard } from './components/ProjectDashboard';
-import { WriteIcon, ImageIcon, CharacterIcon, HomeIcon } from './components/Icons';
-
-const initialManuscriptId = crypto.randomUUID();
-
-const initialProject: Omit<Project, 'id'> = {
-  title: 'Dinastía Estelar',
-  synopsis: 'En una galaxia gobernada por un imperio en decadencia, un joven piloto descubre un antiguo artefacto que podría salvar a la civilización o destruirla por completo.',
-  styleSeed: 'Estilo de anime épico de ciencia ficción, mechas detallados, iluminación cinematográfica, nebulosas vibrantes, al estilo de Studio Trigger y Hiroyuki Imaishi.',
-  memoryCore: {
-    characters: [
-      { id: '1', name: 'Kaelen "Kael" Vance', age: '19', role: 'Protagonista', psychology: 'Imprudente, cínico, pero con un corazón de oro oculto. El ingenio sarcástico es su mecanismo de defensa.', backstory: 'Huérfano durante una escaramuza fronteriza, se unió a la academia para sobrevivir, no por la gloria.', relationships: 'Rival de Elara, su mentor es el Comandante Thorne.', appearance: 'Cabello oscuro y desordenado, ojos color avellana con una chispa desafiante. Complexión delgada pero atlética. Siempre lleva una chaqueta de piloto desgastada sobre su uniforme.', skills: 'Piloto de caza excepcional con reflejos inhumanos. Talentoso para la improvisación táctica. Pésimo en seguir las reglas.', imageUrl: '' },
-      { id: '2', name: 'Elara Vex', age: '20', role: 'Rival/Antagonista', psychology: 'Disciplinada, ambiciosa y una firme creyente en el orden del Imperio. Ve a Kael como un comodín peligroso.', backstory: 'Proviene de una familia noble de alto rango, tiene una inmensa presión por tener éxito.', relationships: 'Rival de Kael, protegida del Gran Almirante.', appearance: 'Cabello plateado y liso recogido en una coleta estricta. Ojos azules penetrantes. Postura militar impecable. Su uniforme siempre está perfectamente planchado.', skills: 'Estratega brillante y piloto de manual. Experta en el combate de flotas a gran escala. Puede predecir los movimientos del enemigo basándose en la doctrina militar estándar.', imageUrl: '' },
-    ],
-    locations: [
-      { id: '1', name: 'Nave Insignia "El Aegis"', description: 'Un destructor estelar masivo y antiguo, el último bastión de la 7ª flota. Sus hangares son cavernosos y están llenos de olor a ozono y metal viejo.', imageUrl: '' },
-      { id: '2', name: 'Nebulosa Xylos', description: 'Una nebulosa traicionera pero hermosa, conocida por sus anomalías gravitacionales y por ser un refugio para contrabandistas.', imageUrl: '' },
-    ],
-    plotPoints: [
-      { id: '1', title: 'El Descubrimiento', description: 'Kael encuentra el artefacto durante una patrulla de rutina en la Nebulosa Xylos.', imageUrl: '' },
-      { id: '2', title: 'Primera Confrontación', description: 'Elara intenta confiscarle el artefacto a Kael, lo que lleva a su primer gran combate aéreo.', imageUrl: '' },
-    ],
-  },
-  manuscripts: [
-    {
-      id: initialManuscriptId,
-      title: 'Capítulo 1 - Borrador',
-      content: 'El siseo estático del comunicador era el único sonido que se atrevía a desafiar el bajo zumbido del motor de la nave exploradora. Afuera, la Nebulosa Xylos pintaba la cabina en tonos de púrpura violento y azul eléctrico. Kaelen Vance, alias "Kael", lo odiaba. Demasiado bonito. Las cosas bonitas en el vacío solían ser el preludio de una muerte violenta y fea.\n\n"Ruta de patrulla siete despejada," dijo con voz monótona, cargada del aburrimiento practicado de un adolescente que preferiría estar en cualquier otro lugar. "Solicitando permiso para regresar al Aegis."\n\nSilencio. Más largo de lo habitual.'
-    }
-  ],
-  activeManuscriptId: initialManuscriptId,
-  gallery: [],
-};
+import { AuthScreen } from './components/AuthScreen'; // Importar pantalla de Auth
+import { WriteIcon, ImageIcon, CharacterIcon, HomeIcon, Spinner } from './components/Icons';
+import { saveProjectFull, loadProjectFull, subscribeToProjectList, deleteProjectFull, subscribeToAuth, logoutUser } from './services/firebase';
+import type { User } from 'firebase/auth';
 
 const App: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<View>(View.CreationEngine);
-  const [isSaved, setIsSaved] = useState(false);
-  const saveIndicatorTimeout = useRef<number>();
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
+  const [projectList, setProjectList] = useState<Project[]>([]); 
+  const [activeProject, setActiveProject] = useState<Project | null>(null); 
+  const [activeView, setActiveView] = useState<View>(View.CreationEngine);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const saveTimeoutRef = useRef<number | undefined>(undefined);
+
+  // 0. Suscripción a Auth
   useEffect(() => {
-    try {
-      const savedProjectsJSON = localStorage.getItem('nova-scribe-projects');
-      if (savedProjectsJSON) {
-        const parsedProjects: Project[] = JSON.parse(savedProjectsJSON);
-        // Data migration: ensure all projects have a gallery array to prevent crashes with older data structures.
-        const migratedProjects = parsedProjects.map(p => ({
-            ...p,
-            gallery: Array.isArray(p.gallery) ? p.gallery : [],
-        }));
-        setProjects(migratedProjects);
-      } else {
-        const firstProject = { ...initialProject, id: crypto.randomUUID() };
-        setProjects([firstProject]);
-      }
-    } catch (error) {
-        console.error("Error al cargar proyectos:", error);
-        const firstProject = { ...initialProject, id: crypto.randomUUID() };
-        setProjects([firstProject]);
-    }
+    const unsubscribe = subscribeToAuth((currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
+  // 1. Suscripción a la lista de proyectos (Solo si hay usuario)
   useEffect(() => {
-    if (projects.length > 0 && activeProjectId) {
-      localStorage.setItem('nova-scribe-projects', JSON.stringify(projects));
-      
-      clearTimeout(saveIndicatorTimeout.current);
-      setIsSaved(true);
-      saveIndicatorTimeout.current = window.setTimeout(() => {
-          setIsSaved(false);
-      }, 2000);
+    if (!user) {
+        setProjectList([]);
+        return;
     }
+
+    const unsubscribe = subscribeToProjectList((projects) => {
+      setProjectList(projects);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  // 2. Auto-guardado del proyecto ACTIVO
+  const triggerSave = async () => {
+     if (!activeProject) return;
+     setIsSaving(true);
+     try {
+        await saveProjectFull(activeProject);
+     } catch (error) {
+        console.error("Error en guardado manual/auto:", error);
+     } finally {
+        setIsSaving(false);
+     }
+  };
+
+  useEffect(() => {
+    if (!activeProject) return;
+
+    setIsSaving(true); // Indicar visualmente que hay cambios pendientes
+    clearTimeout(saveTimeoutRef.current);
+
+    // Guardar 1.5 segundos después del último cambio
+    saveTimeoutRef.current = window.setTimeout(() => {
+        triggerSave();
+    }, 1500);
+
+    return () => clearTimeout(saveTimeoutRef.current);
+  }, [activeProject]);
+
+  // --- HANDLERS ---
+
+  const handleCreateProject = async (projectData: Omit<Project, 'id'>) => {
+    const newId = crypto.randomUUID();
+    const newProject: Project = { ...projectData, id: newId };
     
-    return () => clearTimeout(saveIndicatorTimeout.current);
-  }, [projects, activeProjectId]);
-
-  const activeProject = projects.find(p => p.id === activeProjectId);
-  
-  const setActiveProjectState = (updater: React.SetStateAction<Project>) => {
-    setProjects(prevProjects =>
-      prevProjects.map(p => {
-        if (p.id === activeProjectId) {
-          return typeof updater === 'function' ? updater(p) : updater;
-        }
-        return p;
-      })
-    );
-  };
-  
-  const handleCreateProject = (projectData: Omit<Project, 'id'>) => {
-    const newProject: Project = { ...projectData, id: crypto.randomUUID() };
-    setProjects(prev => [...prev, newProject]);
-    setActiveProjectId(newProject.id);
-  };
-
-  const handleDeleteProject = (projectId: string) => {
-    if (window.confirm("¿Estás seguro de que quieres eliminar este proyecto? Esta acción no se puede deshacer.")) {
-        setProjects(prev => prev.filter(p => p.id !== projectId));
-        if (activeProjectId === projectId) {
-            setActiveProjectId(null);
-        }
+    setIsLoading(true);
+    try {
+        await saveProjectFull(newProject);
+        setActiveProject(newProject);
+    } catch (error) {
+        console.error("Error creando proyecto:", error);
+        alert("No se pudo crear el proyecto en la nube.");
+    } finally {
+        setIsLoading(false);
     }
   };
 
+  const handleSelectProject = async (id: string) => {
+    setIsLoading(true);
+    try {
+        const fullProject = await loadProjectFull(id);
+        if (fullProject) {
+            setActiveProject(fullProject);
+        } else {
+            alert("Proyecto no encontrado o eliminado.");
+        }
+    } catch (error) {
+        console.error("Error cargando proyecto:", error);
+        alert("Error al cargar el proyecto.");
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+      try {
+          await deleteProjectFull(projectId);
+          if (activeProject?.id === projectId) {
+              setActiveProject(null);
+          }
+      } catch (error) {
+          console.error("Error eliminando proyecto:", error);
+          alert("Error al eliminar el proyecto.");
+      }
+  };
+
+  const setActiveProjectState = (updater: React.SetStateAction<Project>) => {
+    setActiveProject(prev => {
+        if (!prev) return null;
+        return typeof updater === 'function' ? updater(prev) : updater;
+    });
+  };
+
+  const handleLogout = async () => {
+      await logoutUser();
+      setActiveProject(null);
+  };
+
+  // --- RENDERING ---
+
+  // Pantalla de Carga Inicial (Verificando sesión)
+  if (authLoading) {
+      return (
+        <div className="min-h-screen bg-brand-primary flex flex-col items-center justify-center text-white">
+            <Spinner className="h-12 w-12 text-brand-accent mb-4" />
+            <p className="text-brand-text-secondary animate-pulse">Iniciando Nova Scribe...</p>
+        </div>
+      );
+  }
+
+  // Si no hay usuario -> Pantalla de Login
+  if (!user) {
+      return <AuthScreen />;
+  }
+
+  // Pantalla de Carga de Datos
+  if (isLoading && !activeProject && projectList.length > 0) {
+      return (
+          <div className="flex flex-col items-center justify-center h-screen bg-brand-primary text-brand-text-primary">
+              <Spinner className="h-12 w-12 text-brand-accent mb-4" />
+              <p className="text-xl animate-pulse">Sincronizando con el Núcleo...</p>
+          </div>
+      );
+  }
+
+  // Dashboard de Proyectos (Si hay usuario pero no proyecto activo)
   if (!activeProject) {
-    return <ProjectDashboard 
-        projects={projects} 
-        onSelectProject={setActiveProjectId}
-        onCreateProject={handleCreateProject}
-        onDeleteProject={handleDeleteProject}
-    />;
+    return (
+        <div className="relative">
+            <div className="absolute top-4 right-4 z-50">
+                <div className="flex items-center space-x-3">
+                     <span className="text-sm text-brand-text-secondary hidden md:inline">{user.email}</span>
+                     <button onClick={handleLogout} className="px-3 py-1 bg-slate-800 text-red-400 text-sm rounded hover:bg-red-900/50 border border-slate-700">
+                         Salir
+                     </button>
+                </div>
+            </div>
+            <ProjectDashboard 
+                projects={projectList} 
+                onSelectProject={handleSelectProject}
+                onCreateProject={handleCreateProject}
+                onDeleteProject={handleDeleteProject}
+            />
+        </div>
+    );
   }
   
   const renderActiveView = () => {
@@ -154,24 +214,38 @@ const App: React.FC = () => {
       <header className="flex-shrink-0 bg-brand-primary border-b border-brand-secondary shadow-md px-4 py-2">
         <div className="flex items-center justify-between mx-auto">
             <div className="flex items-center space-x-4">
-                 <button onClick={() => setActiveProjectId(null)} className="p-2 rounded-full hover:bg-brand-secondary" title="Volver al Panel de Proyectos">
+                 <button onClick={() => setActiveProject(null)} className="p-2 rounded-full hover:bg-brand-secondary" title="Volver al Panel de Proyectos">
                     <HomeIcon className="h-5 w-5 text-brand-text-secondary hover:text-brand-accent" />
                  </button>
                  <div className="flex items-center space-x-3">
-                    <div className="text-xl font-bold">
+                    <div className="text-xl font-bold hidden md:block">
                         Nova<span className="text-brand-accent">Scribe</span>
-                        <span className="text-lg font-normal text-brand-text-secondary ml-3 hidden md:inline">/ {activeProject.title}</span>
+                        <span className="text-lg font-normal text-brand-text-secondary ml-3">/ {activeProject.title}</span>
                     </div>
-                    <div className="w-20">
-                      {isSaved && <span className="text-sm text-green-400 transition-opacity duration-300">Guardado</span>}
+                    <div className="flex items-center">
+                      {isSaving ? (
+                          <button disabled className="flex items-center space-x-2 px-3 py-1 bg-slate-800 rounded text-xs text-sky-400 animate-pulse border border-slate-700">
+                              <Spinner className="h-3 w-3"/> <span>Guardando...</span>
+                          </button>
+                      ) : (
+                          <button onClick={triggerSave} className="flex items-center space-x-1 px-3 py-1 bg-transparent hover:bg-slate-800 rounded text-xs text-green-500 transition-colors border border-transparent hover:border-green-900/50" title="Forzar guardado ahora">
+                              <span>✓ En la nube</span>
+                          </button>
+                      )}
                     </div>
                  </div>
             </div>
-            <nav className="flex items-center space-x-2">
-                <NavItem label="Núcleo de Memoria" view={View.MemoryCore} icon={<CharacterIcon className="h-5 w-5" />} />
-                <NavItem label="Motor de Creación" view={View.CreationEngine} icon={<WriteIcon className="h-5 w-5" />} />
-                <NavItem label="Estudio Visual" view={View.VisualStudio} icon={<ImageIcon className="h-5 w-5" />} />
-            </nav>
+            
+            <div className="flex items-center space-x-4">
+                <nav className="flex items-center space-x-2">
+                    <NavItem label="Núcleo" view={View.MemoryCore} icon={<CharacterIcon className="h-5 w-5" />} />
+                    <NavItem label="Editor" view={View.CreationEngine} icon={<WriteIcon className="h-5 w-5" />} />
+                    <NavItem label="Visual" view={View.VisualStudio} icon={<ImageIcon className="h-5 w-5" />} />
+                </nav>
+                 <button onClick={handleLogout} className="hidden md:block px-3 py-1 bg-slate-800 text-red-400 text-xs rounded border border-slate-700 hover:bg-red-900/30">
+                    Salir
+                </button>
+            </div>
         </div>
       </header>
       <main className="flex-grow overflow-y-auto bg-[#0f172a]">
