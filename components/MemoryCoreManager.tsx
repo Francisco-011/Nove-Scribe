@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Project, Character, Location, PlotPoint } from '../types';
-import { CharacterIcon, WorldIcon, PlotIcon, PlusIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, Spinner, SparklesIcon } from './Icons';
+import { CharacterIcon, WorldIcon, PlotIcon, PlusIcon, EditIcon, TrashIcon, ChevronDownIcon, ChevronUpIcon, Spinner, SparklesIcon, CheckIcon } from './Icons';
 import { generateCharacterDetails, generateLocationDetails, generatePlotStructure, enrichCharacterProfile } from '../services/geminiService';
 
 interface MemoryCoreManagerProps {
@@ -152,9 +152,10 @@ const MemoryModal: React.FC<{
                             type="submit"
                             data-lpignore="true"
                             data-form-type="other"
-                            className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors font-semibold"
+                            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors font-semibold"
                         >
-                            Guardar
+                            <CheckIcon className="h-4 w-4"/>
+                            <span>Guardar</span>
                         </button>
                     </div>
                 </form>

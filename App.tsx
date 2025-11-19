@@ -8,10 +8,9 @@ import { ProjectDashboard } from './components/ProjectDashboard';
 import { AuthScreen } from './components/AuthScreen'; // Importar pantalla de Auth
 import { WriteIcon, ImageIcon, CharacterIcon, HomeIcon, Spinner } from './components/Icons';
 import { saveProjectFull, loadProjectFull, subscribeToProjectList, deleteProjectFull, subscribeToAuth, logoutUser } from './services/firebase';
-import type { User } from 'firebase/auth';
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   const [projectList, setProjectList] = useState<Project[]>([]); 

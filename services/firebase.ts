@@ -1,14 +1,20 @@
 
-import { initializeApp } from "firebase/app";
-import { 
+import * as _app from "firebase/app";
+import * as _auth from "firebase/auth";
+import * as _firestore from "firebase/firestore";
+import type { Project, Character, Location, PlotPoint, Manuscript, GeneratedImage } from '../types';
+
+// Workaround for module resolution errors: cast imports to any to access destructured members
+const { initializeApp } = _app as any;
+const { 
   getAuth, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged,
-  User
-} from "firebase/auth";
-import { 
+  onAuthStateChanged
+} = _auth as any;
+
+const { 
   getFirestore, 
   collection, 
   doc, 
@@ -20,10 +26,9 @@ import {
   onSnapshot,
   query,
   where,
-  Firestore,
   serverTimestamp
-} from "firebase/firestore";
-import type { Project, Character, Location, PlotPoint, Manuscript, GeneratedImage } from '../types';
+} = _firestore as any;
+
 
 // Configuración EXACTA proporcionada para 'proceza'
 const firebaseConfig = {
@@ -63,7 +68,7 @@ export const logoutUser = async () => {
   return await signOut(auth);
 };
 
-export const subscribeToAuth = (callback: (user: User | null) => void) => {
+export const subscribeToAuth = (callback: (user: any | null) => void) => {
   return onAuthStateChanged(auth, callback);
 };
 
@@ -74,7 +79,7 @@ export const subscribeToAuth = (callback: (user: User | null) => void) => {
  * Evita usar 'batch' único para prevenir que una imagen pesada bloquee el guardado del texto.
  */
 const syncSubcollectionSafe = async (
-  db: Firestore, 
+  db: any, 
   parentPath: string, 
   subcollectionName: string, 
   items: {id: string}[]
@@ -89,7 +94,7 @@ const syncSubcollectionSafe = async (
     const promises: Promise<any>[] = [];
 
     // 2. Borrar lo que ya no existe localmente
-    snapshot.docs.forEach(docSnapshot => {
+    snapshot.docs.forEach((docSnapshot: any) => {
         if (!newIdsLocal.has(docSnapshot.id)) {
             // console.log(`Borrando ${subcollectionName}/${docSnapshot.id}`);
             promises.push(deleteDoc(docSnapshot.ref));
@@ -102,7 +107,7 @@ const syncSubcollectionSafe = async (
         const docRef = doc(db, colPath, item.id);
         // Usamos merge: true para asegurar que las actualizaciones de campos (texto) se apliquen correctamente
         const savePromise = setDoc(docRef, item, { merge: true })
-            .catch(err => {
+            .catch((err: any) => {
                 console.error(`❌ Error guardando documento individual en ${subcollectionName} (Posiblemente imagen muy pesada):`, item.id, err);
                 // No relanzamos el error para permitir que los otros items se guarden
             });
@@ -186,13 +191,13 @@ export const loadProjectFull = async (projectId: string): Promise<Project | null
       styleSeed: data.styleSeed,
       writingStyle: data.writingStyle || '', // Cargamos el estilo de escritura
       activeManuscriptId: data.activeManuscriptId,
-      gallery: gallerySnap.docs.map(d => d.data() as GeneratedImage),
+      gallery: gallerySnap.docs.map((d: any) => d.data() as GeneratedImage),
       memoryCore: {
-        characters: charsSnap.docs.map(d => d.data() as Character),
-        locations: locsSnap.docs.map(d => d.data() as Location),
-        plotPoints: plotsSnap.docs.map(d => d.data() as PlotPoint)
+        characters: charsSnap.docs.map((d: any) => d.data() as Character),
+        locations: locsSnap.docs.map((d: any) => d.data() as Location),
+        plotPoints: plotsSnap.docs.map((d: any) => d.data() as PlotPoint)
       },
-      manuscripts: manusSnap.docs.map(d => d.data() as Manuscript)
+      manuscripts: manusSnap.docs.map((d: any) => d.data() as Manuscript)
     } as Project;
 
     console.log("✅ Proyecto cargado con éxito.");
@@ -213,7 +218,7 @@ export const deleteProjectFull = async (projectId: string) => {
     const snapshot = await getDocs(collection(db, `${projectPath}/${sub}`));
     const batch = writeBatch(db);
     let count = 0;
-    snapshot.docs.forEach(doc => {
+    snapshot.docs.forEach((doc: any) => {
       batch.delete(doc.ref);
       count++;
     });
@@ -231,8 +236,8 @@ export const subscribeToProjectList = (onUpdate: (projects: Project[]) => void) 
       where("ownerId", "==", auth.currentUser.uid)
   );
   
-  return onSnapshot(q, (snapshot) => {
-    const projectsMeta = snapshot.docs.map(doc => {
+  return onSnapshot(q, (snapshot: any) => {
+    const projectsMeta = snapshot.docs.map((doc: any) => {
         const data = doc.data();
         return {
             id: doc.id,
@@ -254,7 +259,7 @@ export const subscribeToProjectList = (onUpdate: (projects: Project[]) => void) 
     });
 
     onUpdate(projectsMeta);
-  }, (error) => {
+  }, (error: any) => {
       console.error("Error en suscripción de proyectos:", error);
   });
 };
