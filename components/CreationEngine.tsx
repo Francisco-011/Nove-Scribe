@@ -44,7 +44,7 @@ const ManuscriptModal: React.FC<{
                 <h3 className="text-xl font-bold mb-4 text-brand-accent">
                     {mode === 'create' ? 'Nuevo Manuscrito/Capítulo' : 'Renombrar Manuscrito'}
                 </h3>
-                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" translate="no">
                     <input 
                         autoFocus
                         value={value} 
@@ -54,7 +54,11 @@ const ManuscriptModal: React.FC<{
                     />
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
                         <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-transparent text-brand-text-secondary hover:text-white rounded hover:bg-slate-800 transition-colors border border-slate-700 sm:border-none">Cancelar</button>
-                        <button type="submit" className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors shadow-lg">
+                        <button 
+                            type="submit" 
+                            translate="no"
+                            className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors shadow-lg"
+                        >
                             <CheckIcon className="h-4 w-4"/>
                             <span>Guardar</span>
                         </button>

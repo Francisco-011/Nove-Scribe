@@ -91,14 +91,19 @@ const NewProjectModal: React.FC<NewProjectModalProps> = ({ isOpen, onClose, onCr
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 rounded-lg shadow-xl p-6 w-full max-w-lg border border-brand-secondary overflow-y-auto max-h-[90vh]">
                 <h3 className="text-xl font-bold mb-4 text-brand-accent">Crear Nuevo Proyecto</h3>
-                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" translate="no">
                     <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Título del Proyecto" className="w-full bg-brand-secondary p-2 rounded" required />
                     <textarea value={synopsis} onChange={e => setSynopsis(e.target.value)} placeholder="Sinopsis" className="w-full bg-brand-secondary p-2 rounded h-32" required />
                     <input value={styleSeed} onChange={e => setStyleSeed(e.target.value)} placeholder="Semilla de Estilo Visual (ej: Fantasía oscura gótica)" className="w-full bg-brand-secondary p-2 rounded" />
                     <input value={writingStyle} onChange={e => setWritingStyle(e.target.value)} placeholder="Estilo de Escritura (ej: Primera persona, tono sarcástico)" className="w-full bg-brand-secondary p-2 rounded" />
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
                         <button type="button" onClick={onClose} className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-secondary rounded hover:bg-slate-600 transition-colors">Cancelar</button>
-                        <button type="submit" disabled={isCreating} className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 flex items-center justify-center transition-colors">
+                        <button 
+                            type="submit" 
+                            disabled={isCreating} 
+                            translate="no"
+                            className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 flex items-center justify-center transition-colors"
+                        >
                             {isCreating && <Spinner className="h-4 w-4 mr-2"/>}
                             {isCreating ? 'Creando...' : 'Crear Proyecto'}
                         </button>

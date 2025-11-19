@@ -138,7 +138,7 @@ const MemoryModal: React.FC<{
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-900 rounded-lg shadow-xl p-6 w-full max-w-lg border border-brand-secondary overflow-y-auto max-h-[90vh] flex flex-col">
                 <h3 className="text-xl font-bold mb-4 text-brand-accent">{`${title} ${viewName}`}</h3>
-                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-form-type="other">
+                <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" data-form-type="other" translate="no">
                     {renderFormFields()}
                     <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
                         <button 
@@ -152,6 +152,7 @@ const MemoryModal: React.FC<{
                             type="submit"
                             data-lpignore="true"
                             data-form-type="other"
+                            translate="no"
                             className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-3 sm:py-2 bg-brand-accent text-white rounded hover:bg-sky-500 transition-colors font-semibold"
                         >
                             <CheckIcon className="h-4 w-4"/>
