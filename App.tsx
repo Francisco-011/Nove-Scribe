@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import type { Project } from './types';
 import { View } from './types';
@@ -5,7 +6,8 @@ import { MemoryCoreManager } from './components/MemoryCoreManager';
 import { CreationEngine } from './components/CreationEngine';
 import { VisualStudio } from './components/VisualStudio';
 import { ProjectDashboard } from './components/ProjectDashboard';
-import { AuthScreen } from './components/AuthScreen'; // Importar pantalla de Auth
+import { AuthScreen } from './components/AuthScreen'; 
+import { IdeaVault } from './components/IdeaVault'; // Importar Bóveda
 import { WriteIcon, ImageIcon, CharacterIcon, HomeIcon, Spinner } from './components/Icons';
 import { saveProjectFull, loadProjectFull, subscribeToProjectList, deleteProjectFull, subscribeToAuth, logoutUser } from './services/firebase';
 
@@ -155,10 +157,14 @@ const App: React.FC = () => {
       );
   }
 
-  // Dashboard de Proyectos (Si hay usuario pero no proyecto activo)
-  if (!activeProject) {
-    return (
-        <div className="relative">
+  return (
+    <div className="flex flex-col h-screen font-sans overflow-hidden">
+      {/* Bóveda de Ideas Global */}
+      <IdeaVault user={user} />
+
+      {!activeProject ? (
+        // Dashboard
+        <div className="relative h-full overflow-y-auto">
             <div className="absolute top-4 right-4 z-50">
                 <div className="flex items-center space-x-3">
                      <span className="text-sm text-brand-text-secondary hidden md:inline">{user.email}</span>
@@ -174,82 +180,83 @@ const App: React.FC = () => {
                 onDeleteProject={handleDeleteProject}
             />
         </div>
-    );
-  }
-  
-  const renderActiveView = () => {
-    switch (activeView) {
-      case View.MemoryCore:
-        return <MemoryCoreManager project={activeProject} setProject={setActiveProjectState} />;
-      case View.CreationEngine:
-        return <CreationEngine project={activeProject} setProject={setActiveProjectState} />;
-      case View.VisualStudio:
-        return <VisualStudio project={activeProject} setProject={setActiveProjectState} />;
-      default:
-        return <CreationEngine project={activeProject} setProject={setActiveProjectState} />;
-    }
-  };
-  
-  const NavItem: React.FC<{
-    label: string;
-    view: View;
-    icon: React.ReactNode;
-  }> = ({ label, view, icon }) => (
-    <button
-      onClick={() => setActiveView(view)}
-      className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:w-auto text-sm space-x-0 md:space-x-2 p-2 md:px-4 md:py-2 rounded-lg transition-colors duration-200 ${
-        activeView === view
-          ? 'bg-brand-accent text-white'
-          : 'text-brand-text-secondary hover:bg-brand-secondary hover:text-brand-text-primary'
-      }`}
-    >
-      {icon}
-      <span className="mt-1 md:mt-0">{label}</span>
-    </button>
-  );
-
-  return (
-    <div className="flex flex-col h-screen font-sans">
-      <header className="flex-shrink-0 bg-brand-primary border-b border-brand-secondary shadow-md px-4 py-2">
-        <div className="flex items-center justify-between mx-auto">
-            <div className="flex items-center space-x-4">
-                 <button onClick={() => setActiveProject(null)} className="p-2 rounded-full hover:bg-brand-secondary" title="Volver al Panel de Proyectos">
-                    <HomeIcon className="h-5 w-5 text-brand-text-secondary hover:text-brand-accent" />
-                 </button>
-                 <div className="flex items-center space-x-3">
-                    <div className="text-xl font-bold hidden md:block">
-                        Nova<span className="text-brand-accent">Scribe</span>
-                        <span className="text-lg font-normal text-brand-text-secondary ml-3">/ {activeProject.title}</span>
+      ) : (
+        // Workspace
+        <>
+            <header className="flex-shrink-0 bg-brand-primary border-b border-brand-secondary shadow-md px-4 py-2">
+                <div className="flex items-center justify-between mx-auto">
+                    <div className="flex items-center space-x-4">
+                        <button onClick={() => setActiveProject(null)} className="p-2 rounded-full hover:bg-brand-secondary" title="Volver al Panel de Proyectos">
+                            <HomeIcon className="h-5 w-5 text-brand-text-secondary hover:text-brand-accent" />
+                        </button>
+                        <div className="flex items-center space-x-3">
+                            <div className="text-xl font-bold hidden md:block">
+                                Nova<span className="text-brand-accent">Scribe</span>
+                                <span className="text-lg font-normal text-brand-text-secondary ml-3">/ {activeProject.title}</span>
+                            </div>
+                            <div className="flex items-center">
+                            {isSaving ? (
+                                <button disabled className="flex items-center space-x-2 px-3 py-1 bg-slate-800 rounded text-xs text-sky-400 animate-pulse border border-slate-700">
+                                    <Spinner className="h-3 w-3"/> <span>Guardando...</span>
+                                </button>
+                            ) : (
+                                <button onClick={triggerSave} className="flex items-center space-x-1 px-3 py-1 bg-transparent hover:bg-slate-800 rounded text-xs text-green-500 transition-colors border border-transparent hover:border-green-900/50" title="Forzar guardado ahora">
+                                    <span>✓ En la nube</span>
+                                </button>
+                            )}
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex items-center">
-                      {isSaving ? (
-                          <button disabled className="flex items-center space-x-2 px-3 py-1 bg-slate-800 rounded text-xs text-sky-400 animate-pulse border border-slate-700">
-                              <Spinner className="h-3 w-3"/> <span>Guardando...</span>
-                          </button>
-                      ) : (
-                          <button onClick={triggerSave} className="flex items-center space-x-1 px-3 py-1 bg-transparent hover:bg-slate-800 rounded text-xs text-green-500 transition-colors border border-transparent hover:border-green-900/50" title="Forzar guardado ahora">
-                              <span>✓ En la nube</span>
-                          </button>
-                      )}
+                    
+                    <div className="flex items-center space-x-4">
+                        <nav className="flex items-center space-x-2">
+                             <button
+                                onClick={() => setActiveView(View.MemoryCore)}
+                                className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:w-auto text-sm space-x-0 md:space-x-2 p-2 md:px-4 md:py-2 rounded-lg transition-colors duration-200 ${
+                                    activeView === View.MemoryCore
+                                    ? 'bg-brand-accent text-white'
+                                    : 'text-brand-text-secondary hover:bg-brand-secondary hover:text-brand-text-primary'
+                                }`}
+                                >
+                                <CharacterIcon className="h-5 w-5" />
+                                <span className="mt-1 md:mt-0 hidden sm:inline">Núcleo</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveView(View.CreationEngine)}
+                                className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:w-auto text-sm space-x-0 md:space-x-2 p-2 md:px-4 md:py-2 rounded-lg transition-colors duration-200 ${
+                                    activeView === View.CreationEngine
+                                    ? 'bg-brand-accent text-white'
+                                    : 'text-brand-text-secondary hover:bg-brand-secondary hover:text-brand-text-primary'
+                                }`}
+                                >
+                                <WriteIcon className="h-5 w-5" />
+                                <span className="mt-1 md:mt-0 hidden sm:inline">Editor</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveView(View.VisualStudio)}
+                                className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:w-auto text-sm space-x-0 md:space-x-2 p-2 md:px-4 md:py-2 rounded-lg transition-colors duration-200 ${
+                                    activeView === View.VisualStudio
+                                    ? 'bg-brand-accent text-white'
+                                    : 'text-brand-text-secondary hover:bg-brand-secondary hover:text-brand-text-primary'
+                                }`}
+                                >
+                                <ImageIcon className="h-5 w-5" />
+                                <span className="mt-1 md:mt-0 hidden sm:inline">Visual</span>
+                            </button>
+                        </nav>
+                        <button onClick={handleLogout} className="hidden md:block px-3 py-1 bg-slate-800 text-red-400 text-xs rounded border border-slate-700 hover:bg-red-900/30">
+                            Salir
+                        </button>
                     </div>
-                 </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-                <nav className="flex items-center space-x-2">
-                    <NavItem label="Núcleo" view={View.MemoryCore} icon={<CharacterIcon className="h-5 w-5" />} />
-                    <NavItem label="Editor" view={View.CreationEngine} icon={<WriteIcon className="h-5 w-5" />} />
-                    <NavItem label="Visual" view={View.VisualStudio} icon={<ImageIcon className="h-5 w-5" />} />
-                </nav>
-                 <button onClick={handleLogout} className="hidden md:block px-3 py-1 bg-slate-800 text-red-400 text-xs rounded border border-slate-700 hover:bg-red-900/30">
-                    Salir
-                </button>
-            </div>
-        </div>
-      </header>
-      <main className="flex-grow overflow-y-auto bg-[#0f172a]">
-        {renderActiveView()}
-      </main>
+                </div>
+            </header>
+            <main className="flex-grow overflow-y-auto bg-[#0f172a]">
+                {activeView === View.MemoryCore && <MemoryCoreManager project={activeProject} setProject={setActiveProjectState} />}
+                {activeView === View.CreationEngine && <CreationEngine project={activeProject} setProject={setActiveProjectState} />}
+                {activeView === View.VisualStudio && <VisualStudio project={activeProject} setProject={setActiveProjectState} />}
+            </main>
+        </>
+      )}
     </div>
   );
 };

@@ -2,8 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Nova Scribe</title>
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Custom Icon for Browser Tab -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✒️</text></svg>" />
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -15,6 +21,9 @@
               'brand-accent': '#38bdf8', // sky-400
               'brand-text-primary': '#f1f5f9', // slate-100
               'brand-text-secondary': '#94a3b8', // slate-400
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             }
           }
         }
@@ -36,7 +45,7 @@
 }
 </script>
 </head>
-  <body class="bg-brand-primary text-brand-text-primary">
+  <body class="bg-brand-primary text-brand-text-primary overscroll-none">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

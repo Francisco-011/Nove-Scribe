@@ -26,7 +26,10 @@ const {
   onSnapshot,
   query,
   where,
-  serverTimestamp
+  serverTimestamp,
+  enableIndexedDbPersistence,
+  orderBy,
+  addDoc
 } = _firestore as any;
 
 
@@ -46,6 +49,23 @@ export const auth = getAuth(app);
 
 // IMPORTANTE: Inicializar Firestore apuntando a la base de datos personalizada 'nova-scribe-db'
 export const db = getFirestore(app, 'nova-scribe-db');
+
+// Habilitar Persistencia Offline
+const enablePersistence = async () => {
+  try {
+      await enableIndexedDbPersistence(db);
+      console.log("✅ Persistencia Offline Habilitada");
+  } catch (err: any) {
+      if (err.code == 'failed-precondition') {
+          console.warn("⚠️ Persistencia falló: Múltiples pestañas abiertas.");
+      } else if (err.code == 'unimplemented') {
+          console.warn("⚠️ El navegador no soporta persistencia.");
+      }
+  }
+};
+// Intentar habilitar persistencia inmediatamente
+enablePersistence();
+
 
 // --- AUTH SERVICES ---
 
@@ -262,4 +282,45 @@ export const subscribeToProjectList = (onUpdate: (projects: Project[]) => void) 
   }, (error: any) => {
       console.error("Error en suscripción de proyectos:", error);
   });
+};
+
+// --- IDEA VAULT SERVICES ---
+
+export interface Idea {
+    id: string;
+    content: string;
+    createdAt: any;
+    tags?: string[];
+}
+
+export const saveIdea = async (content: string) => {
+    if (!auth.currentUser) throw new Error("Usuario no autenticado");
+    
+    await addDoc(collection(db, "users", auth.currentUser.uid, "ideas"), {
+        content,
+        createdAt: serverTimestamp(),
+        tags: []
+    });
+};
+
+export const deleteIdea = async (ideaId: string) => {
+    if (!auth.currentUser) return;
+    await deleteDoc(doc(db, "users", auth.currentUser.uid, "ideas", ideaId));
+};
+
+export const subscribeToIdeas = (onUpdate: (ideas: Idea[]) => void) => {
+    if (!auth.currentUser) return () => {};
+    
+    const q = query(
+        collection(db, "users", auth.currentUser.uid, "ideas"),
+        orderBy("createdAt", "desc")
+    );
+
+    return onSnapshot(q, (snapshot: any) => {
+        const ideas = snapshot.docs.map((doc: any) => ({
+            id: doc.id,
+            ...doc.data()
+        })) as Idea[];
+        onUpdate(ideas);
+    });
 };

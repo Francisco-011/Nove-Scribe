@@ -1,0 +1,21 @@
+{
+  "name": "Nova Scribe",
+  "short_name": "NovaScribe",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e293b",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBzdHlsZT0iYmFja2dyb3VuZC1jb2xvcjojMWUyOTNiO2JvcmRlci1yYWRpdXM6MjAlIj48cGF0aCBkPSJNMzYzLjUgOTkuNWMtMTAuNS0xMC41LTI3LjYtMTAuNS0zOC4xIDBsLTE4NiAxODZjLTIuMyAyLjMtMy45IDUuMy00LjYgOC41bC0yNCAxMTJjLTEuNCA2LjYgMy42IDExLjYgMTAuMiAxMC4ybDExMi0yNGMzLjItLjcgNi4yLTIuMyA4LjUtNC42bDE4Ni0xODZjMTAuNS0xMC41IDEwLjUtMjcuNiAwLTM4LjFMMzYzLjUgOTkuNXpNMTY1LjYgNDA2LjRsLTE2LTc0LjUgNjMuNiA2My42LTQ3LjYgMTAuOXptNTAuNy04LjlsLTgxLjktODEuOSAxNTYuNi0xNTYuNiA4MS45IDgxLjktMTU2LjYgMTU2LjZ6IiBmaWxsPSIjMzhiZGY4Ii8+PC9zdmc+",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBzdHlsZT0iYmFja2dyb3VuZC1jb2xvcjojMWUyOTNiO2JvcmRlci1yYWRpdXM6MjAlIj48cGF0aCBkPSJNMzYzLjUgOTkuNWMtMTAuNS0xMC41LTI3LjYtMTAuNS0zOC4xIDBsLTE4NiAxODZjLTIuMyAyLjMtMy45IDUuMy00LjYgOC41bC0yNCAxMTJjLTEuNCA2LjYgMy42IDExLjYgMTAuMiAxMC4ybDExMi0yNGMzLjItLjcgNi4yLTIuMyA4LjUtNC42bDE4Ni0xODZjMTAuNS0xMC41IDEwLjUtMjcuNiAwLTM4LjFMMzYzLjUgOTkuNXpNMTY1LjYgNDA2LjRsLTE2LTc0LjUgNjMuNiA2My42LTQ3LjYgMTAuOXptNTAuNy04LjlsLTgxLjktODEuOSAxNTYuNi0xNTYuNiA4MS45IDgxLjktMTU2LjYgMTU2LjZ6IiBmaWxsPSIjMzhiZGY4Ii8+PC9zdmc+",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
