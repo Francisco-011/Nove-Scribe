@@ -44,6 +44,13 @@ export interface Manuscript {
   content: string;
 }
 
+export interface ManuscriptVersion {
+    id: string;
+    content: string;
+    timestamp: string; // ISO string
+    note?: string; // e.g., "Auto-save", "Manual snapshot", "Before AI merge"
+}
+
 export interface GeneratedImage {
   id: string;
   src: string;
@@ -61,4 +68,11 @@ export interface Project {
   activeManuscriptId: string;
   gallery: GeneratedImage[];
   lastModified?: string;
+}
+
+export interface Inconsistency {
+    type: 'character' | 'plot' | 'world';
+    description: string;
+    quote: string;
+    severity: 'high' | 'medium' | 'low';
 }

@@ -2,7 +2,7 @@
 import * as _app from "firebase/app";
 import * as _auth from "firebase/auth";
 import * as _firestore from "firebase/firestore";
-import type { Project, Character, Location, PlotPoint, Manuscript, GeneratedImage } from '../types';
+import type { Project, Character, Location, PlotPoint, Manuscript, GeneratedImage, ManuscriptVersion } from '../types';
 
 // Workaround for module resolution errors: cast imports to any to access destructured members
 const { initializeApp } = _app as any;
@@ -47,8 +47,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// IMPORTANTE: Inicializar Firestore apuntando a la base de datos personalizada 'nova-scribe-db'
-export const db = getFirestore(app, 'nova-scribe-db');
+// Revertido: Usar la base de datos nombrada 'nova-scribe-db' como estaba originalmente
+export const db = getFirestore(app, 'nova-scribe-db'); 
 
 // Habilitar Persistencia Offline
 const enablePersistence = async () => {
@@ -150,6 +150,7 @@ export const saveProjectFull = async (project: Project) => {
       const projectRef = doc(db, "projects", project.id);
       
       // 1. Guardar Metadatos (Ligero)
+      // Verificamos que se guarden TODOS los campos principales
       const projectMeta = {
         id: project.id,
         title: project.title,
@@ -166,7 +167,7 @@ export const saveProjectFull = async (project: Project) => {
       const projectPath = `projects/${project.id}`;
 
       // 2. Guardar subcolecciones en paralelo
-      // Usamos la versión Safe para que las imágenes no bloqueen el texto
+      // Esto guarda el CONTENIDO real. En Firebase Console, busca las colecciones dentro del documento del proyecto.
       await Promise.all([
           syncSubcollectionSafe(db, projectPath, 'characters', project.memoryCore.characters),
           syncSubcollectionSafe(db, projectPath, 'locations', project.memoryCore.locations),
@@ -175,7 +176,7 @@ export const saveProjectFull = async (project: Project) => {
           syncSubcollectionSafe(db, projectPath, 'gallery', project.gallery || [])
       ]);
 
-      console.log("✅ Guardado completo finalizado.");
+      console.log("✅ Guardado completo finalizado exitosamente.");
   } catch (error) {
       console.error("❌ ERROR CRÍTICO GLOBAL al guardar:", error);
       throw error;
@@ -283,6 +284,105 @@ export const subscribeToProjectList = (onUpdate: (projects: Project[]) => void) 
       console.error("Error en suscripción de proyectos:", error);
   });
 };
+
+// --- VERSION HISTORY SERVICES ---
+
+// 1. Manuscripts History
+export const saveManuscriptVersion = async (projectId: string, manuscriptId: string, content: string, note?: string) => {
+    if (!content) return;
+    try {
+        const historyRef = collection(db, `projects/${projectId}/manuscripts/${manuscriptId}/history`);
+        await addDoc(historyRef, {
+            content: content,
+            timestamp: new Date().toISOString(),
+            note: note || 'Snapshot automático'
+        });
+        console.log("✅ Snapshot de historial guardado.");
+    } catch (e) {
+        console.error("Error guardando historial:", e);
+    }
+};
+
+export const getManuscriptHistory = async (projectId: string, manuscriptId: string): Promise<ManuscriptVersion[]> => {
+    try {
+        const historyRef = collection(db, `projects/${projectId}/manuscripts/${manuscriptId}/history`);
+        const q = query(historyRef, orderBy("timestamp", "desc"));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map((doc: any) => ({
+            id: doc.id,
+            ...doc.data()
+        })) as ManuscriptVersion[];
+    } catch (e) {
+        console.error("Error obteniendo historial:", e);
+        return [];
+    }
+};
+
+// 2. Generic Entity History (Characters, Locations, PlotPoints)
+export const saveEntityVersion = async (projectId: string, collectionName: string, entityId: string, data: any, note?: string) => {
+    if (!data) return;
+    try {
+        // Serializamos el objeto a string para guardarlo de forma consistente
+        const contentString = JSON.stringify(data);
+        const historyRef = collection(db, `projects/${projectId}/${collectionName}/${entityId}/history`);
+        await addDoc(historyRef, {
+            content: contentString, // Guardamos como JSON string
+            timestamp: new Date().toISOString(),
+            note: note || 'Snapshot automático'
+        });
+        console.log(`✅ Snapshot de historial guardado para ${collectionName}.`);
+    } catch (e) {
+        console.error(`Error guardando historial de ${collectionName}:`, e);
+    }
+};
+
+export const getEntityHistory = async (projectId: string, collectionName: string, entityId: string): Promise<ManuscriptVersion[]> => {
+    try {
+        const historyRef = collection(db, `projects/${projectId}/${collectionName}/${entityId}/history`);
+        const q = query(historyRef, orderBy("timestamp", "desc"));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map((doc: any) => ({
+            id: doc.id,
+            ...doc.data()
+        })) as ManuscriptVersion[];
+    } catch (e) {
+        console.error(`Error obteniendo historial de ${collectionName}:`, e);
+        return [];
+    }
+};
+
+// 3. Project Metadata History (Synopsis, Styles)
+export const saveProjectMetadataVersion = async (projectId: string, data: any, note?: string) => {
+    if(!data) return;
+    try {
+        const contentString = JSON.stringify(data);
+        const historyRef = collection(db, `projects/${projectId}/metadata_history`);
+        await addDoc(historyRef, {
+            content: contentString,
+            timestamp: new Date().toISOString(),
+            note: note || 'Snapshot automático'
+        });
+        console.log("✅ Snapshot de metadatos guardado.");
+    } catch (e) {
+        console.error("Error guardando historial de metadatos:", e);
+    }
+}
+
+export const getProjectMetadataHistory = async (projectId: string): Promise<ManuscriptVersion[]> => {
+    try {
+        const historyRef = collection(db, `projects/${projectId}/metadata_history`);
+        const q = query(historyRef, orderBy("timestamp", "desc"));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map((doc: any) => ({
+            id: doc.id,
+            ...doc.data()
+        })) as ManuscriptVersion[];
+    } catch (e) {
+        console.error("Error obteniendo historial de metadatos:", e);
+        return [];
+    }
+}
+
 
 // --- IDEA VAULT SERVICES ---
 

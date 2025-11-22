@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import type { Project, Character, Location, PlotPoint, GeneratedImage } from '../types';
 import { generateCharacterImage, generateLocationImage, generatePlotPointImage, generateSceneImage, suggestScenesFromManuscript } from '../services/geminiService';
@@ -13,7 +14,7 @@ interface SuggestedScene {
     prompt: string;
 }
 
-// --- Utility Functions for Image Size ---
+// --- Utility Functions for Image Size & Compression ---
 
 const getBase64SizeInBytes = (base64String: string): number => {
     let padding = 0;
@@ -33,7 +34,48 @@ const formatBytes = (bytes: number, decimals = 0) => {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
 
-const SAFE_LIMIT_BYTES = 950 * 1024; // 950 KB Safe limit (Firestore doc limit is 1MB)
+/**
+ * Compresses a base64 image string by converting to JPEG and resizing if necessary.
+ * Target: Max Width 1024px, Quality 0.8 (High enough for visual, low enough for storage)
+ */
+const compressImage = (base64Str: string, maxWidth = 1024, quality = 0.8): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = base64Str;
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            // Calculate new dimensions
+            if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error("Could not get canvas context"));
+                return;
+            }
+            
+            // Draw white background (for transparency issues when converting PNG to JPEG)
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Convert to JPEG to save massive space compared to PNG
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressedDataUrl);
+        };
+        img.onerror = (err) => reject(err);
+    });
+};
+
+const SAFE_LIMIT_BYTES = 950 * 1024; // 950 KB Safe limit
 
 // -----------------------------------------
 
@@ -88,6 +130,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   const [suggestedScenes, setSuggestedScenes] = useState<SuggestedScene[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [imageToDelete, setImageToDelete] = useState<string | null>(null);
+  const [processingMsg, setProcessingMsg] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,28 +140,45 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   
   const handleGenerate = async (type: 'char' | 'location' | 'plot' | 'scene', payload?: any) => {
     setLoading(type, true);
+    setProcessingMsg('La IA está pintando...');
     try {
-        let imageUrl: string | null = null;
+        let rawImageUrl: string | null = null;
+        
+        // 1. Generate Raw Image (Usually heavy PNG)
         if (type === 'char') {
             const character = project.memoryCore.characters.find(c => c.id === selectedCharId);
-            if(character) imageUrl = await generateCharacterImage(character, project);
+            if(character) rawImageUrl = await generateCharacterImage(character, project);
         } else if (type === 'location') {
             const location = project.memoryCore.locations.find(l => l.id === selectedLocationId);
-            if(location) imageUrl = await generateLocationImage(location, project);
+            if(location) rawImageUrl = await generateLocationImage(location, project);
         } else if (type === 'plot') {
              const plotPoint = project.memoryCore.plotPoints.find(p => p.id === selectedPlotId);
-             if(plotPoint) imageUrl = await generatePlotPointImage(plotPoint, project);
+             if(plotPoint) rawImageUrl = await generatePlotPointImage(plotPoint, project);
         } else if (type === 'scene' && payload) {
-            imageUrl = await generateSceneImage(payload);
+            rawImageUrl = await generateSceneImage(payload);
         }
         
-        if (imageUrl) {
-            // Validate Size from AI
-            const size = getBase64SizeInBytes(imageUrl);
+        if (rawImageUrl) {
+            // 2. Compress Image Client-Side
+            setProcessingMsg('Optimizando tamaño...');
+            const compressedUrl = await compressImage(rawImageUrl);
+            
+            // 3. Validate Final Size
+            const size = getBase64SizeInBytes(compressedUrl);
+            
             if (size > SAFE_LIMIT_BYTES) {
-                alert(`La imagen generada por la IA es inusualmente grande (${formatBytes(size)}) y supera el límite de seguridad de 950KB. No se ha guardado para proteger la base de datos.`);
+                 // Fallback: Try aggressive compression if still too big
+                 const aggressiveUrl = await compressImage(rawImageUrl, 800, 0.6);
+                 const aggressiveSize = getBase64SizeInBytes(aggressiveUrl);
+                 
+                 if (aggressiveSize > SAFE_LIMIT_BYTES) {
+                     alert(`Incluso tras la compresión, la imagen es demasiado compleja (${formatBytes(aggressiveSize)}). Intenta generar algo más simple.`);
+                 } else {
+                    const newImage: GeneratedImage = { id: crypto.randomUUID(), src: aggressiveUrl };
+                    setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
+                 }
             } else {
-                const newImage: GeneratedImage = { id: crypto.randomUUID(), src: imageUrl };
+                const newImage: GeneratedImage = { id: crypto.randomUUID(), src: compressedUrl };
                 setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
             }
         }
@@ -127,6 +187,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
       alert(`Error al generar la imagen. Revisa la consola.`);
     } finally {
       setLoading(type, false);
+      setProcessingMsg('');
     }
   };
 
@@ -155,12 +216,11 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
     }
   }
 
- const handleAssignImage = (image: GeneratedImage, newTargetId: string) => { // newTargetId is "type-id" or "none"
+ const handleAssignImage = (image: GeneratedImage, newTargetId: string) => {
     setProject(prevProject => {
         const newProject = JSON.parse(JSON.stringify(prevProject));
         const oldTargetId = image.assignedToId;
 
-        // --- Step 1: Update the old target entity (remove image URL/ID) ---
         if (oldTargetId && oldTargetId !== newTargetId) {
             const [oldType, oldId] = oldTargetId.split('-');
             const unassign = <T extends {id: string}>(items: T[]) => items.map(item => 
@@ -171,8 +231,6 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
             if (oldType === 'plot') newProject.memoryCore.plotPoints = unassign(newProject.memoryCore.plotPoints);
         }
 
-        // --- Step 2: Update the new target entity (ADD IMAGE ID, NOT BASE64) ---
-        // Critical for Firestore limit: We only store the ID of the image, not the base64 string again.
         if (newTargetId !== 'none') {
             const [newType, newId] = newTargetId.split('-');
             const assign = <T extends {id: string}>(items: T[]) => items.map(item => 
@@ -183,13 +241,10 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
             if (newType === 'plot') newProject.memoryCore.plotPoints = assign(newProject.memoryCore.plotPoints);
         }
 
-        // --- Step 3: Update the gallery ---
         newProject.gallery = newProject.gallery.map((galleryImage: GeneratedImage) => {
-            // Unassign any other image that was on the new target
             if (galleryImage.id !== image.id && galleryImage.assignedToId === newTargetId && newTargetId !== 'none') {
                 return { ...galleryImage, assignedToId: undefined };
             }
-            // Update the current image being assigned/unassigned
             if (galleryImage.id === image.id) {
                 return { ...galleryImage, assignedToId: newTargetId === 'none' ? undefined : newTargetId };
             }
@@ -215,7 +270,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   
   const handleDownloadImage = (image: GeneratedImage) => {
     const sanitizeFilename = (name: string) => name.replace(/[^a-z0-9_.-]/gi, '_').toLowerCase();
-    const fileName = `${sanitizeFilename(project.title)}_${image.id.substring(0, 8)}.png`;
+    const fileName = `${sanitizeFilename(project.title)}_${image.id.substring(0, 8)}.jpg`; // Now downloading as JPG
     const link = document.createElement('a');
     link.href = image.src;
     link.download = fileName;
@@ -227,26 +282,24 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-        // 1. Check File Size (Binary)
-        if (file.size > SAFE_LIMIT_BYTES) {
-            alert(`La imagen seleccionada es demasiado pesada (${formatBytes(file.size)}). \n\nEl límite es 950KB para asegurar la sincronización en la nube. Por favor, comprime la imagen antes de subirla.`);
-            if (event.target) event.target.value = ''; // Reset input
-            return;
-        }
-
         const reader = new FileReader();
-        reader.onload = (loadEvent) => {
+        reader.onload = async (loadEvent) => {
             const base64String = loadEvent.target?.result as string;
             if (base64String) {
-                // 2. Check Base64 Size (Double check as encoding adds size)
-                const b64Size = getBase64SizeInBytes(base64String);
-                if (b64Size > SAFE_LIMIT_BYTES) {
-                     alert(`Al procesar la imagen, su tamaño aumentó a ${formatBytes(b64Size)}, superando el límite de 950KB. Intenta con una imagen más pequeña o comprimida.`);
-                     return;
+                try {
+                    // Compress uploaded image immediately
+                    const compressedUrl = await compressImage(base64String);
+                    const size = getBase64SizeInBytes(compressedUrl);
+                    
+                    if (size > SAFE_LIMIT_BYTES) {
+                        alert(`La imagen es demasiado pesada (${formatBytes(size)}) incluso después de optimizarla. Intenta con una imagen más pequeña.`);
+                    } else {
+                        const newImage: GeneratedImage = { id: crypto.randomUUID(), src: compressedUrl };
+                        setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
+                    }
+                } catch (e) {
+                    alert("Error al procesar la imagen.");
                 }
-
-                const newImage: GeneratedImage = { id: crypto.randomUUID(), src: base64String };
-                setProject(prev => ({ ...prev, gallery: [newImage, ...(prev.gallery || [])] }));
             }
         };
         reader.readAsDataURL(file);
@@ -305,6 +358,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                     {project.memoryCore.characters.length > 0 ? project.memoryCore.characters.map(char => (<option key={char.id} value={char.id}>{char.name}</option>)) : <option>No hay personajes</option>}
                 </select>
                 <GeneratorButton onClick={() => handleGenerate('char')} isLoading={loadings.char} disabled={project.memoryCore.characters.length === 0} text="Generar Retrato"/>
+                {loadings.char && <p className="text-xs text-center text-brand-accent animate-pulse mt-1">{processingMsg}</p>}
             </div>
              {/* Location */}
             <div>
@@ -312,6 +366,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                     {project.memoryCore.locations.length > 0 ? project.memoryCore.locations.map(loc => (<option key={loc.id} value={loc.id}>{loc.name}</option>)) : <option>No hay ubicaciones</option>}
                 </select>
                 <GeneratorButton onClick={() => handleGenerate('location')} isLoading={loadings.location} disabled={project.memoryCore.locations.length === 0} text="Generar Ubicación"/>
+                {loadings.location && <p className="text-xs text-center text-brand-accent animate-pulse mt-1">{processingMsg}</p>}
             </div>
              {/* Plot Point */}
             <div>
@@ -319,6 +374,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                     {project.memoryCore.plotPoints.length > 0 ? project.memoryCore.plotPoints.map(p => (<option key={p.id} value={p.id}>{p.title}</option>)) : <option>No hay Puntos de Trama</option>}
                 </select>
                 <GeneratorButton onClick={() => handleGenerate('plot')} isLoading={loadings.plot} disabled={project.memoryCore.plotPoints.length === 0} text="Generar Punto de Trama"/>
+                {loadings.plot && <p className="text-xs text-center text-brand-accent animate-pulse mt-1">{processingMsg}</p>}
             </div>
           </div>
           
@@ -344,6 +400,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                     </select>
                 </div>
                 <GeneratorButton onClick={handleGenerateScene} isLoading={loadings.scene} text="Generar Escena Compleja"/>
+                {loadings.scene && <p className="text-xs text-center text-brand-accent animate-pulse mt-1">{processingMsg}</p>}
            </div>
         </div>
 
@@ -352,7 +409,7 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                 <h3 className="text-lg font-semibold text-brand-accent">Galería de Imágenes</h3>
                 <button onClick={() => fileInputRef.current?.click()} className="flex items-center space-x-2 px-3 py-1 text-xs bg-brand-secondary text-white rounded-lg hover:bg-slate-600 transition-colors border border-transparent hover:border-brand-accent">
                     <UploadIcon className="h-4 w-4"/>
-                    <span>Cargar (Máx 950KB)</span>
+                    <span>Cargar (Auto-optimizada)</span>
                 </button>
            </div>
            <div className="bg-slate-900 border border-brand-secondary rounded-lg p-4 h-[80vh] overflow-y-auto">
@@ -364,7 +421,8 @@ export const VisualStudio: React.FC<VisualStudioProps> = ({ project, setProject 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {gallery.map((image) => {
                             const sizeBytes = getBase64SizeInBytes(image.src);
-                            const isHeavy = sizeBytes > 800 * 1024; // Warn if > 800KB
+                            // Limit is 950KB, warning at 800KB
+                            const isHeavy = sizeBytes > 800 * 1024; 
                             return (
                                 <div key={image.id} className="bg-brand-secondary p-2 rounded-lg space-y-2 group relative">
                                     <div className="relative">

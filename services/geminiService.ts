@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import type { Project, Character, Location, PlotPoint } from '../types';
+import type { Project, Character, Location, PlotPoint, Inconsistency } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -58,7 +58,7 @@ CONTEXTO DEL PROYECTO:
   return context;
 }
 
-const buildAnalysisContext = (project: Project): string => {
+const buildAnalysisContext = (project: Project, textToAnalyze?: string): string => {
     let context = `CONTEXTO DEL PROYECTO:
 ---
 **TÍTULO:** ${project.title}
@@ -69,7 +69,7 @@ const buildAnalysisContext = (project: Project): string => {
   if (project.memoryCore.characters.length > 0) {
     context += `**PERSONAJES EXISTENTES (para referencia de coherencia):**\n`;
     project.memoryCore.characters.forEach(char => {
-      context += `- **${char.name}**: Rol: ${char.role}. Psicología: ${char.psychology}.\n`;
+      context += `- **${char.name}**: Rol: ${char.role}. Psicología: ${char.psychology}. Apariencia: ${char.appearance || 'N/A'}. Relaciones: ${char.relationships}\n`;
     });
     context += '---\n';
   }
@@ -91,7 +91,10 @@ const buildAnalysisContext = (project: Project): string => {
   }
   
   const activeManuscript = project.manuscripts.find(m => m.id === project.activeManuscriptId);
-  context += `**CONTENIDO DEL MANUSCRITO A ANALIZAR:**\n"${activeManuscript?.content || ''}"\n---`;
+  // Si textToAnalyze está presente, usar ese texto. De lo contrario, usar el manuscrito activo.
+  const contentToAnalyze = textToAnalyze !== undefined ? textToAnalyze : (activeManuscript?.content || '');
+  
+  context += `**CONTENIDO A ANALIZAR:**\n"${contentToAnalyze}"\n---`;
   
   return context;
 }
@@ -109,6 +112,53 @@ export const generateNarrative = async (userPrompt: string, project: Project): P
     console.error("Error al generar la narrativa:", error);
     return "Ocurrió un error al generar la narrativa. Por favor, revisa la consola para más detalles.";
   }
+};
+
+export const checkConsistency = async (project: Project, textToAnalyze?: string): Promise<Inconsistency[]> => {
+    const context = buildAnalysisContext(project, textToAnalyze);
+    const prompt = `Actúa como un EDITOR DE CONTINUIDAD (Continuity Editor) profesional para una novela.
+    
+    Tu trabajo es leer el "CONTENIDO A ANALIZAR" proporcionado en el contexto y buscar INCONSISTENCIAS LÓGICAS comparándolo con los "PERSONAJES EXISTENTES", "UBICACIONES" y reglas del mundo.
+    
+    Busca errores como:
+    1. **Personajes (character):** Alguien actúa de forma totalmente opuesta a su psicología establecida sin motivo, descripciones físicas erróneas (ojos azules cuando son verdes), o personajes que deberían estar en otro lugar/muertos.
+    2. **Trama (plot):** Eventos que contradicen lo establecido anteriormente o saltos temporales ilógicos.
+    3. **Mundo (world):** Reglas de magia/tecnología que se rompen, o descripciones de lugares que contradicen el mapa.
+    
+    Si no encuentras errores graves, devuelve un array vacío.
+    Si encuentras errores, clasifícalos por gravedad (high/medium/low).
+    
+    Responde ÚNICAMENTE con un array JSON.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `${context}\n\n${prompt}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            type: { type: Type.STRING, enum: ['character', 'plot', 'world'] },
+                            description: { type: Type.STRING, description: "Explicación clara de por qué es una inconsistencia." },
+                            quote: { type: Type.STRING, description: "La frase o fragmento del texto donde ocurre el error." },
+                            severity: { type: Type.STRING, enum: ['high', 'medium', 'low'] }
+                        },
+                        required: ["type", "description", "quote", "severity"]
+                    },
+                },
+            },
+        });
+
+        let jsonStr = response.text.trim();
+        return JSON.parse(jsonStr);
+
+    } catch (error) {
+        console.error("Error verificando consistencia:", error);
+        throw error;
+    }
 };
 
 export const generateCharacterDetails = async (prompt: string): Promise<Partial<Character>> => {
